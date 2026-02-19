@@ -5,6 +5,9 @@
 *.so
 *.dylib
 
+# Python Cache
+__pycache__/
+
 # Test binary
 *.test
 
