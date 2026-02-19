@@ -24,9 +24,7 @@ REPO_ROOT    = Path(__file__).resolve().parent.parent
 PROCESSED_DIR = REPO_ROOT / "processed"
 SCHEMA_PATH   = REPO_ROOT / "schemas" / "symbol.schema.json"
 
-# ---------------------------------------------------------------------------
 # Lightweight validator (stdlib only — no jsonschema dependency)
-# ---------------------------------------------------------------------------
 
 REQUIRED_FIELDS = [
     "schema_version", "id", "filename", "display_name",
@@ -57,7 +55,7 @@ def validate_symbol(data: dict, json_path: Path) -> tuple[list[str], list[str]]:
     warnings: list[str] = []
     name = str(json_path)
 
-    # --- Required fields present ---
+    # Required fields present
     for field in REQUIRED_FIELDS:
         _check(errors, warnings, name, field in data, f"missing required field '{field}'")
 
@@ -65,29 +63,29 @@ def validate_symbol(data: dict, json_path: Path) -> tuple[list[str], list[str]]:
         errors.append(f"  ERROR  {name}: root must be an object")
         return errors, warnings
 
-    # --- schema_version ---
+    # schema_version
     sv = data.get("schema_version", "")
     _check(errors, warnings, name, isinstance(sv, str) and re.match(r"^\d+\.\d+\.\d+$", sv),
            f"schema_version '{sv}' must match X.Y.Z")
 
-    # --- id ---
+    # id
     sym_id = data.get("id", "")
     _check(errors, warnings, name, isinstance(sym_id, str) and sym_id.count("/") >= 2,
            f"id '{sym_id}' must have format <standard>/<category>/<stem>")
 
-    # --- filename ---
+    # filename
     fn = data.get("filename", "")
     _check(errors, warnings, name, isinstance(fn, str) and fn.endswith(".svg"),
            f"filename '{fn}' must end with .svg")
     _check(errors, warnings, name, isinstance(fn, str) and fn == fn.lower(),
            f"filename '{fn}' must be lowercase")
 
-    # --- display_name ---
+    # display_name
     dn = data.get("display_name", "")
     _check(errors, warnings, name, isinstance(dn, str) and len(dn) >= 1,
            "display_name must be a non-empty string")
 
-    # --- category / subcategory ---
+    # category / subcategory
     cat = data.get("category", "")
     sub = data.get("subcategory", "")
     _check(errors, warnings, name, isinstance(cat, str) and len(cat) >= 1,
@@ -97,7 +95,7 @@ def validate_symbol(data: dict, json_path: Path) -> tuple[list[str], list[str]]:
     if cat == "unknown":
         _warn(warnings, name, "category is 'unknown' — consider manual classification")
 
-    # --- svg block ---
+    # svg block
     svg = data.get("svg", {})
     if isinstance(svg, dict):
         ec = svg.get("element_count")
@@ -112,7 +110,7 @@ def validate_symbol(data: dict, json_path: Path) -> tuple[list[str], list[str]]:
     else:
         errors.append(f"  ERROR  {name}: svg must be an object")
 
-    # --- file block ---
+    # file block
     file_block = data.get("file", {})
     if isinstance(file_block, dict):
         sb = file_block.get("size_bytes")
@@ -121,7 +119,7 @@ def validate_symbol(data: dict, json_path: Path) -> tuple[list[str], list[str]]:
     else:
         errors.append(f"  ERROR  {name}: file must be an object")
 
-    # --- classification block ---
+    # classification block
     clf = data.get("classification", {})
     if isinstance(clf, dict):
         conf = clf.get("confidence", "")
@@ -132,7 +130,7 @@ def validate_symbol(data: dict, json_path: Path) -> tuple[list[str], list[str]]:
     else:
         errors.append(f"  ERROR  {name}: classification must be an object")
 
-    # --- tags ---
+    # tags
     tags = data.get("tags", [])
     _check(errors, warnings, name, isinstance(tags, list),
            "tags must be an array")
@@ -142,7 +140,7 @@ def validate_symbol(data: dict, json_path: Path) -> tuple[list[str], list[str]]:
         if len(tags) == 0:
             _warn(warnings, name, "tags is empty — auto-tags may not have run")
 
-    # --- SVG file on disk ---
+    # SVG file on disk
     expected_svg = json_path.with_suffix(".svg")
     if not expected_svg.exists():
         errors.append(f"  ERROR  {name}: companion SVG '{expected_svg.name}' not found on disk")
@@ -150,9 +148,7 @@ def validate_symbol(data: dict, json_path: Path) -> tuple[list[str], list[str]]:
     return errors, warnings
 
 
-# ---------------------------------------------------------------------------
 # Main
-# ---------------------------------------------------------------------------
 
 def main() -> None:
     parser = argparse.ArgumentParser(

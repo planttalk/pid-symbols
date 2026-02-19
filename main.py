@@ -33,18 +33,14 @@ import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 from pathlib import Path
 
-# ---------------------------------------------------------------------------
 # Paths
-# ---------------------------------------------------------------------------
 REPO_ROOT     = Path(__file__).resolve().parent   # repo root = same dir as main.py
 INPUT_DIR     = REPO_ROOT / "input"
 PROCESSED_DIR = REPO_ROOT / "processed"
 
 SCHEMA_VERSION = "1.0.0"
 
-# ---------------------------------------------------------------------------
 # Classification maps
-# ---------------------------------------------------------------------------
 
 # autocad-parser subfolder → (standard, category)
 AUTOCAD_FOLDER_MAP: dict[str, tuple[str, str]] = {
@@ -216,9 +212,7 @@ _REFERENCE_RE = re.compile(
 # Pattern to extract standard from filename: "(ISO 10628-2)" or "(DIN 2429)"
 _STANDARD_RE = re.compile(r'\(\s*((?:ISO|DIN|ISA)\s*[\d\-]+(?:-\d+)?)\s*\)', re.IGNORECASE)
 
-# ---------------------------------------------------------------------------
 # Helpers
-# ---------------------------------------------------------------------------
 
 def _extract_standard_from_name(stem: str) -> str | None:
     """Return 'ISO 10628-2', 'DIN 2429', etc. if embedded in filename, else None."""
@@ -331,9 +325,7 @@ def parse_svg_attributes(svg_path: Path) -> dict:
     return result
 
 
-# ---------------------------------------------------------------------------
 # Classification strategies
-# ---------------------------------------------------------------------------
 
 def _strategy_reference_sheet(svg_path: Path) -> dict | None:
     """Strategy 0: Detect full reference sheets / drawings (not individual symbols)."""
@@ -529,9 +521,7 @@ def classify(svg_path: Path) -> dict:
     }
 
 
-# ---------------------------------------------------------------------------
 # Metadata assembly
-# ---------------------------------------------------------------------------
 
 def _safe_std_slug(standard: str) -> str:
     """Convert 'ISO 10628-2' → 'iso_10628_2' for use in output paths."""
@@ -628,9 +618,7 @@ def build_metadata(svg_path: Path, final_stem: str, classification: dict) -> dic
     }
 
 
-# ---------------------------------------------------------------------------
 # Main
-# ---------------------------------------------------------------------------
 
 def main() -> None:
     parser = argparse.ArgumentParser(
