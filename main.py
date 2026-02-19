@@ -1,14 +1,19 @@
-#!/usr/bin/env python3
 """
-generate_metadata.py
+main.py
 --------------------
 Recursively scans input/ for SVG files, classifies each one,
-and writes:
-  - output/<standard>/<category>/<stem>.json  (individual metadata)
-  - output/registry.json                       (master registry)
+and writes to processed/ (mirrored by standard/category):
+  - processed/<standard>/<category>/<normalized_stem>.svg   (copy, snake_case)
+  - processed/<standard>/<category>/<normalized_stem>.json  (metadata)
+  - processed/registry.json                                  (master index)
+
+Filename normalization: all output filenames are snake_case lowercase.
+  "Agitator (general), stirrer (general) (ISO 10628-2).svg"
+      -> "agitator_general_stirrer_general.svg"
 
 Classification strategies (applied in order):
-  1. autocad-parser folder naming  (isa_actuator_svg/ → ISA / actuator)
+  0. Reference sheet detection      (multi-symbol sheets → reference_sheet)
+  1. autocad-parser folder naming   (isa_actuator_svg/ → ISA / actuator)
   2. Filename standard tag          ("(ISO 10628-2)" / "(DIN 2429)")
   3. Downloaded subfolder map       (agitators/ → agitator)
   4. Generated filename prefix      (valve_ball → valve)
@@ -30,9 +35,9 @@ from pathlib import Path
 # ---------------------------------------------------------------------------
 # Paths
 # ---------------------------------------------------------------------------
-REPO_ROOT = Path(__file__).resolve().parent.parent
-INPUT_DIR  = REPO_ROOT / "input"
-OUTPUT_DIR = REPO_ROOT / "output"
+REPO_ROOT     = Path(__file__).resolve().parent.parent
+INPUT_DIR     = REPO_ROOT / "input"
+PROCESSED_DIR = REPO_ROOT / "processed"
 
 SCHEMA_VERSION = "1.0.0"
 
@@ -478,47 +483,69 @@ def classify(svg_path: Path) -> dict:
 # ---------------------------------------------------------------------------
 
 def _safe_std_slug(standard: str) -> str:
-    """Convert 'ISO 10628-2' → 'iso_10628-2' for use in output paths."""
+    """Convert 'ISO 10628-2' → 'iso_10628_2' for use in output paths."""
     return _slugify(standard)
 
 
-def output_path_for(svg_path: Path, classification: dict) -> Path:
+def _normalize_stem(stem: str) -> str:
     """
-    Compute the output JSON path.
-    Layout: output/<standard_slug>/<category>/<stem>.json
-    Unknown symbols go to: output/unknown/<category>/<stem>.json
+    Produce a snake_case lowercase filename stem from any raw stem.
+    Strips embedded standard tags before slugifying.
+      "Agitator (general), stirrer (general) (ISO 10628-2)" -> "agitator_general_stirrer_general"
+      "valve_ball"                                           -> "valve_ball"
+      "Pump"                                                 -> "pump"
     """
-    standard_slug = _safe_std_slug(classification["standard"])
-    category      = classification["category"]
-    return OUTPUT_DIR / standard_slug / category / (svg_path.stem + ".json")
+    clean = _STANDARD_RE.sub("", stem).strip().strip(",").strip()
+    return _slugify(clean) or _slugify(stem)
 
 
-def build_metadata(svg_path: Path) -> dict:
+def processed_dir_for(classification: dict) -> Path:
+    """Return the processed/ subdirectory for this classification."""
+    return PROCESSED_DIR / _safe_std_slug(classification["standard"]) / classification["category"]
+
+
+def resolve_stem(base_stem: str, target_dir: Path, used: set[str]) -> str:
+    """
+    Return a collision-free stem within target_dir.
+    If 'base_stem' is already taken (in used or on disk), appends _2, _3, ...
+    Adds the chosen stem to `used`.
+    """
+    stem = base_stem
+    counter = 2
+    while stem in used or (target_dir / (stem + ".svg")).exists():
+        stem = f"{base_stem}_{counter}"
+        counter += 1
+    used.add(stem)
+    return stem
+
+
+def build_metadata(svg_path: Path, final_stem: str, classification: dict) -> dict:
     """Assemble the complete metadata dict for one SVG."""
-    classification = classify(svg_path)
-    svg_attrs      = parse_svg_attributes(svg_path)
+    svg_attrs = parse_svg_attributes(svg_path)
 
-    rel_svg  = svg_path.relative_to(REPO_ROOT)
-    out_path = output_path_for(svg_path, classification)
-    rel_meta = out_path.relative_to(REPO_ROOT)
+    rel_input    = svg_path.relative_to(REPO_ROOT)
+    target_dir   = processed_dir_for(classification)
+    rel_svg_out  = (target_dir / (final_stem + ".svg")).relative_to(REPO_ROOT)
+    rel_meta_out = (target_dir / (final_stem + ".json")).relative_to(REPO_ROOT)
 
-    # Stable ID: standard/category/stem
     symbol_id = (
         f"{_safe_std_slug(classification['standard'])}"
         f"/{classification['category']}"
-        f"/{svg_path.stem}"
+        f"/{final_stem}"
     )
 
     return {
-        "schema_version": SCHEMA_VERSION,
-        "id":             symbol_id,
-        "filename":       svg_path.name,
-        "display_name":   _display_name_from_stem(svg_path.stem),
-        "standard":       classification["standard"],
-        "category":       classification["category"],
-        "subcategory":    classification["subcategory"],
-        "source_path":    str(rel_svg).replace("\\", "/"),
-        "metadata_path":  str(rel_meta).replace("\\", "/"),
+        "schema_version":  SCHEMA_VERSION,
+        "id":              symbol_id,
+        "filename":        final_stem + ".svg",
+        "original_filename": svg_path.name,
+        "display_name":    _display_name_from_stem(svg_path.stem),
+        "standard":        classification["standard"],
+        "category":        classification["category"],
+        "subcategory":     classification["subcategory"],
+        "source_path":     str(rel_input).replace("\\", "/"),
+        "svg_path":        str(rel_svg_out).replace("\\", "/"),
+        "metadata_path":   str(rel_meta_out).replace("\\", "/"),
         "svg": {
             "width":         svg_attrs["width"],
             "height":        svg_attrs["height"],
@@ -547,7 +574,7 @@ def build_metadata(svg_path: Path) -> dict:
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Generate symbol metadata JSON files from input/ SVGs."
+        description="Classify input/ SVGs and write processed/ with normalized names."
     )
     parser.add_argument(
         "--dry-run", action="store_true",
@@ -561,50 +588,62 @@ def main() -> None:
     total = len(svg_files)
     print(f"Found {total} SVG files under {INPUT_DIR}\n")
 
-    registry: list[dict] = []
-    processed = 0
-    errors    = 0
+    registry: list[dict]        = []
+    processed_count             = 0
+    errors                      = 0
+    conf_counts: dict[str, int] = {}
 
-    # Confidence counters for summary
-    conf_counts: dict[str, int] = {"high": 0, "low": 0, "none": 0}
+    # Track used stems per target directory to avoid collisions
+    used_stems: dict[Path, set[str]] = {}
 
     for svg_path in svg_files:
         rel = svg_path.relative_to(REPO_ROOT)
         try:
-            meta = build_metadata(svg_path)
+            classification = classify(svg_path)
+            target_dir     = processed_dir_for(classification)
+
+            if target_dir not in used_stems:
+                used_stems[target_dir] = set()
+
+            base_stem  = _normalize_stem(svg_path.stem)
+            final_stem = resolve_stem(base_stem, target_dir, used_stems[target_dir])
+            meta       = build_metadata(svg_path, final_stem, classification)
         except Exception as exc:
             print(f"  [ERROR] {rel}: {exc}")
             errors += 1
             continue
 
-        out_path = OUTPUT_DIR / Path(meta["metadata_path"]).relative_to("output")
-
         conf = meta["classification"]["confidence"]
         conf_counts[conf] = conf_counts.get(conf, 0) + 1
 
-        label = {
-            "high":   "OK",
-            "low":    "~~",
-            "none":   "??",
-        }.get(conf, "??")
+        label   = {"high": "OK", "low": "~~", "none": "??"}.get(conf, "??")
+        renamed = f" -> {final_stem}.svg" if final_stem != _slugify(svg_path.stem) else ""
 
         print(
-            f"  [{processed + 1:>4}/{total}] {label} "
-            f"{meta['standard']:<14} {meta['category']:<20} {svg_path.name}"
+            f"  [{processed_count + 1:>4}/{total}] {label} "
+            f"{meta['standard']:<14} {meta['category']:<20} "
+            f"{svg_path.name}{renamed}"
         )
 
         if not args.dry_run:
-            out_path.parent.mkdir(parents=True, exist_ok=True)
-            with open(out_path, "w", encoding="utf-8") as fh:
+            import shutil
+            target_dir.mkdir(parents=True, exist_ok=True)
+
+            # Copy SVG with normalized name
+            shutil.copy2(svg_path, target_dir / (final_stem + ".svg"))
+
+            # Write metadata JSON
+            json_path = target_dir / (final_stem + ".json")
+            with open(json_path, "w", encoding="utf-8") as fh:
                 json.dump(meta, fh, indent=2, ensure_ascii=False)
 
         registry.append(meta)
-        processed += 1
+        processed_count += 1
 
     # Write registry
-    registry_path = OUTPUT_DIR / "registry.json"
+    registry_path = PROCESSED_DIR / "registry.json"
     if not args.dry_run:
-        registry_path.parent.mkdir(parents=True, exist_ok=True)
+        PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
         with open(registry_path, "w", encoding="utf-8") as fh:
             json.dump(
                 {
@@ -620,15 +659,16 @@ def main() -> None:
 
     # Summary
     print(f"\n{'='*60}")
-    print(f"  Processed : {processed}")
+    print(f"  Processed : {processed_count}")
     print(f"  Errors    : {errors}")
     print(f"  High conf : {conf_counts.get('high', 0)}")
     print(f"  Low conf  : {conf_counts.get('low', 0)}")
     print(f"  Unknown   : {conf_counts.get('none', 0)}")
     if not args.dry_run:
+        print(f"  Output    : {PROCESSED_DIR}")
         print(f"  Registry  : {registry_path}")
     else:
-        print("  [DRY RUN — no files written]")
+        print("  [DRY RUN -- no files written]")
     print(f"{'='*60}")
 
 
