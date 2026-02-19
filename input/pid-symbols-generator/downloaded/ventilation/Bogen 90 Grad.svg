@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg"
+     xmlns:xlink="http://www.w3.org/1999/xlink" xmlns:ev="http://www.w3.org/2001/xml-events"
+     version="1.1" baseProfile="full"
+     width="255" height="305">
+
+  <path
+     style="fill:#000000"
+     d="M 4,152.5 4,4 127.5,4 251,4 l 0,6 0,6 -117.5,0 -117.5,0 0,142.5 0,142.5 -6,0 -6,0 0,-148.5 z"/>
+</svg>

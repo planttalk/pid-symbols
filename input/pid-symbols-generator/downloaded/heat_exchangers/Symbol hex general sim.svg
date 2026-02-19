@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<svg version="1.2" baseProfile="tiny" width="40mm" height="40mm" viewBox="0 0 4000 4000" preserveAspectRatio="xMidYMid" fill-rule="evenodd" stroke-width="28.222" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" xml:space="preserve">
+ <g visibility="visible" id="MasterSlide_1_Domyślnie">
+  <desc>Master slide
+  </desc>
+  <rect fill="none" stroke="none" x="0" y="0" width="4000" height="4000"/>
+ </g>
+ <g visibility="visible" id="Slide_1_page1">
+  <g>
+   <path fill="none" stroke="rgb(0,0,0)" id="Drawing_1_0" stroke-width="100" stroke-linejoin="round" d="M 2000,3000 C 1816,3000 1659,2958 1500,2866 1341,2774 1226,2659 1134,2500 1042,2341 1000,2184 1000,2000 1000,1816 1042,1659 1134,1500 1226,1341 1341,1226 1500,1134 1659,1042 1816,1000 2000,1000 2184,1000 2341,1042 2500,1134 2659,1226 2774,1341 2866,1500 2958,1659 3000,1816 3000,2000 3000,2184 2958,2341 2866,2500 2774,2659 2659,2774 2500,2866 2341,2958 2184,3000 2000,3000 L 2000,3000 Z"/>
+  </g>
+  <g>
+   <path fill="none" stroke="rgb(0,0,0)" id="Drawing_2_0" stroke-width="100" stroke-linejoin="round" d="M 3500,2000 L 3000,2000"/>
+  </g>
+  <g>
+   <path fill="none" stroke="rgb(0,0,0)" id="Drawing_3_0" stroke-width="100" stroke-linejoin="round" d="M 1000,2000 L 500,2000"/>
+  </g>
+  <g>
+   <path fill="none" stroke="rgb(0,0,0)" id="Drawing_4_0" stroke-width="100" stroke-linejoin="round" d="M 2000,1000 L 2000,500"/>
+  </g>
+  <g>
+   <path fill="none" stroke="rgb(0,0,0)" id="Drawing_5_0" stroke-width="100" stroke-linejoin="round" d="M 2000,3500 L 2000,3000"/>
+  </g>
+  <g>
+   <path fill="none" stroke="rgb(0,0,0)" id="Drawing_6_0" stroke-width="100" stroke-linejoin="round" d="M 2000,2500 L 2500,2000"/>
+  </g>
+  <g>
+   <path fill="none" stroke="rgb(0,0,0)" id="Drawing_7_0" stroke-width="100" stroke-linejoin="round" d="M 1500,2000 L 2000,1500"/>
+  </g>
+  <g>
+   <path fill="none" stroke="rgb(0,0,0)" id="Drawing_8_0" stroke-width="100" stroke-linejoin="round" d="M 1530,2000 L 1000,2000"/>
+  </g>
+  <g>
+   <path fill="none" stroke="rgb(0,0,0)" id="Drawing_9_0" stroke-width="100" stroke-linejoin="round" d="M 2000,2500 L 2000,1500"/>
+  </g>
+  <g>
+   <path fill="none" stroke="rgb(0,0,0)" id="Drawing_10_0" stroke-width="100" stroke-linejoin="round" d="M 3000,2000 L 2470,2000"/>
+  </g>
+ </g>
+</svg>

@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"
+     width="80.0" height="80.0" viewBox="0 0 80.0 80.0" display-inline="False">
+<defs>
+</defs>
+<circle cx="40.0" cy="40.0" r="16.0" fill="white" stroke="black" stroke-width="1.5" />
+<path d="M49.6,40.0 A9.6,9.6,0,1,0,40.0,49.6" stroke="black" stroke-width="1.5" fill="none" />
+<path d="M30.4,40.0 A9.6,9.6,0,1,0,40.0,30.4" stroke="black" stroke-width="1.5" fill="none" />
+</svg>

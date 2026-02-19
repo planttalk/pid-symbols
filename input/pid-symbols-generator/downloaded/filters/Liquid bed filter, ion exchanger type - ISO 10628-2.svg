@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- Created with Inkscape (http://www.inkscape.org/) -->
+
+<svg
+   width="58.208332mm"
+   height="58.208336mm"
+   viewBox="0 0 58.208332 58.208336"
+   version="1.1"
+   id="svg2031"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg">
+  <defs
+     id="defs2028" />
+  <g
+     id="layer1"
+     transform="translate(-25.493096,-1187.425)">
+    <g
+       id="g22550"
+       transform="translate(-12.90274,1087.0292)">
+      <path
+         id="path2106"
+         d="m 67.500002,114.5 v -5"
+         style="display:inline;fill:none;stroke:#000000;stroke-width:0.25;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1" />
+      <path
+         id="path2108"
+         d="m 67.5,117 h -7.499999 v 25 h 15 v -25 z"
+         style="display:inline;opacity:1;fill:none;fill-opacity:1;stroke:#000000;stroke-width:0.5;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-dashoffset:0;stroke-opacity:1;paint-order:normal" />
+      <path
+         style="display:inline;fill:none;stroke:#000000;stroke-width:0.25;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
+         d="m 67.500002,149.5 v -5"
+         id="path2110" />
+      <path
+         id="path2112"
+         d="m 60.000001,122 h 15"
+         style="display:inline;opacity:1;fill:none;fill-opacity:1;stroke:#000000;stroke-width:0.5;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:3, 3;stroke-dashoffset:0;stroke-opacity:1;paint-order:normal" />
+      <path
+         style="display:inline;opacity:1;fill:none;fill-opacity:1;stroke:#000000;stroke-width:0.5;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:3, 3;stroke-dashoffset:0;stroke-opacity:1;paint-order:normal"
+         d="m 60.000001,137 h 15"
+         id="path2114" />
+      <text
+         xml:space="preserve"
+         style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:3.4px;line-height:1.25;font-family:osifont;-inkscape-font-specification:osifont;letter-spacing:0px;word-spacing:0px;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.264583"
+         x="64.223686"
+         y="130.73599"
+         id="text2118"><tspan
+           id="tspan2116"
+           x="64.223686"
+           y="130.73599"
+           style="font-size:3.4px;stroke-width:0.264583">ION</tspan></text>
+    </g>
+  </g>
+</svg>

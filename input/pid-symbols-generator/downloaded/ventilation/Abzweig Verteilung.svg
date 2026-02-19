@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg"
+     xmlns:xlink="http://www.w3.org/1999/xlink" xmlns:ev="http://www.w3.org/2001/xml-events"
+     version="1.1" baseProfile="full"
+     width="774" height="378">
+
+    <path
+       style="fill:#000000"
+       d="m 532,368 0,-6 59.5,0 59.5,0 0,-118 0,-118 6.5,0 6.5,0 0,118 0,118 53,0 53,0 0,6 0,6 -119,0 -119,0 0,-6 z M 122,134 122,16 63,16 4,16 4,10 4,4 l 119,0 119,0 0,6 0,6 -53.5,0 -53.5,0 0,118 0,118 -6.5,0 -6.5,0 0,-118 z"/>
+</svg>

@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"
+     width="60.0" height="100.0" viewBox="0 0 60.0 100.0" display-inline="False">
+<defs>
+</defs>
+<rect x="14.0" y="20.0" width="32.0" height="60.0" fill="white" stroke="black" stroke-width="1.5" />
+<ellipse cx="30.0" cy="20.0" rx="16.0" ry="6.4" fill="white" stroke="black" stroke-width="1.5" />
+<ellipse cx="30.0" cy="80.0" rx="16.0" ry="6.4" fill="white" stroke="black" stroke-width="1.5" />
+</svg>

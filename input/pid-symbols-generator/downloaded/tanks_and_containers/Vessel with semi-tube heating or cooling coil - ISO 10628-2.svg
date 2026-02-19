@@ -1,0 +1,148 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- Created with Inkscape (http://www.inkscape.org/) -->
+
+<svg
+   width="58.208336mm"
+   height="58.208336mm"
+   viewBox="0 0 58.208336 58.208336"
+   version="1.1"
+   id="svg3361"
+   xmlns:xlink="http://www.w3.org/1999/xlink"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg">
+  <defs
+     id="defs3358">
+    <pattern
+       xlink:href="#pattern4715"
+       id="pattern4719"
+       patternTransform="matrix(0.09760861,0.09760861,-0.09760861,0.09760861,263.75,184.50023)" />
+    <pattern
+       xlink:href="#pattern4055"
+       id="pattern4715"
+       patternTransform="matrix(0.09760861,0.09760861,-0.09760861,0.09760861,-16.125,102.00001)" />
+    <pattern
+       xlink:href="#Strips1_8"
+       id="pattern4055"
+       patternTransform="matrix(0.09760861,0.09760861,-0.09760861,0.09760861,-16.125,102)" />
+    <pattern
+       id="Strips1_8"
+       patternTransform="translate(0,0) scale(10,10)"
+       height="1"
+       width="9"
+       patternUnits="userSpaceOnUse">
+      <rect
+         id="rect3355"
+         height="2"
+         width="1"
+         y="-0.5"
+         x="0"
+         style="fill:black;stroke:none" />
+    </pattern>
+    <pattern
+       xlink:href="#pattern4715"
+       id="pattern4723"
+       patternTransform="matrix(0.09760861,0.09760861,-0.09760861,0.09760861,241.25,184.50023)" />
+    <pattern
+       xlink:href="#pattern4055"
+       id="pattern4244"
+       patternTransform="matrix(0.09760861,0.09760861,-0.09760861,0.09760861,-16.125,102.00001)" />
+    <pattern
+       xlink:href="#Strips1_8"
+       id="pattern4246"
+       patternTransform="matrix(0.09760861,0.09760861,-0.09760861,0.09760861,-16.125,102)" />
+    <pattern
+       id="pattern4250"
+       patternTransform="translate(0,0) scale(10,10)"
+       height="1"
+       width="9"
+       patternUnits="userSpaceOnUse">
+      <rect
+         id="rect4248"
+         height="2"
+         width="1"
+         y="-0.5"
+         x="0"
+         style="fill:black;stroke:none" />
+    </pattern>
+    <pattern
+       xlink:href="#pattern4715"
+       id="pattern4727"
+       patternTransform="matrix(0.09760861,0.09760861,-0.09760861,0.09760861,263.75,184.50023)" />
+    <pattern
+       xlink:href="#pattern4055"
+       id="pattern4253"
+       patternTransform="matrix(0.09760861,0.09760861,-0.09760861,0.09760861,-16.125,102.00001)" />
+    <pattern
+       xlink:href="#Strips1_8"
+       id="pattern4255"
+       patternTransform="matrix(0.09760861,0.09760861,-0.09760861,0.09760861,-16.125,102)" />
+    <pattern
+       id="pattern4259"
+       patternTransform="translate(0,0) scale(10,10)"
+       height="1"
+       width="9"
+       patternUnits="userSpaceOnUse">
+      <rect
+         id="rect4257"
+         height="2"
+         width="1"
+         y="-0.5"
+         x="0"
+         style="fill:black;stroke:none" />
+    </pattern>
+  </defs>
+  <g
+     id="layer1"
+     transform="translate(-149.29649,-255.49858)">
+    <g
+       id="g7222"
+       transform="translate(-289.09913,442.60254)">
+      <path
+         id="path4157"
+         d="m 457.49978,-170.49979 v 27.5 h 20.00002 v -30 h -20.00002 z"
+         style="fill:none;stroke:#000000;stroke-width:0.5;stroke-linecap:butt;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1" />
+      <path
+         id="path4159"
+         d="m 489.9998,-165.49979 h -5.00002"
+         style="fill:none;stroke:#000000;stroke-width:0.25;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1" />
+      <path
+         id="path4161"
+         d="m 467.49979,-140.49979 v 5"
+         style="fill:none;stroke:#000000;stroke-width:0.25;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1" />
+      <path
+         style="fill:none;stroke:#000000;stroke-width:0.5;stroke-linecap:butt;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
+         d="m 457.49978,-170.49979 v 27.5 h 20.00002 v -30 h -20.00002 z"
+         id="path4169" />
+      <path
+         style="fill:none;stroke:#000000;stroke-width:0.25;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
+         d="m 449.9998,-150.49979 h -5.00002"
+         id="path4171" />
+      <path
+         style="fill:none;stroke:#000000;stroke-width:0.25;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
+         d="m 467.49979,-140.49979 v 5"
+         id="path4173" />
+      <path
+         id="circle4175"
+         style="opacity:1;fill:none;fill-opacity:1;stroke:#000000;stroke-width:0.5;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-dashoffset:0;stroke-opacity:1;paint-order:normal"
+         d="m 477.49976,-167.99979 a 2.5,2.5 0 0 1 2.5,2.5 2.5,2.5 0 0 1 -2.5,2.5 v -2.5 z" />
+      <path
+         id="path4183"
+         d="m 467.49979,-180.49979 v 5"
+         style="fill:none;stroke:#000000;stroke-width:0.25;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1" />
+      <path
+         d="m -457.49976,-162.99979 a 2.5,2.5 0 0 1 2.5,2.5 2.5,2.5 0 0 1 -2.5,2.5 v -2.5 z"
+         style="opacity:1;fill:none;fill-opacity:1;stroke:#000000;stroke-width:0.5;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-dashoffset:0;stroke-opacity:1;paint-order:normal"
+         id="path4185"
+         transform="scale(-1,1)" />
+      <path
+         d="m -457.49976,-152.99979 a 2.5,2.5 0 0 1 2.5,2.5 2.5,2.5 0 0 1 -2.5,2.5 v -2.5 z"
+         style="opacity:1;fill:none;fill-opacity:1;stroke:#000000;stroke-width:0.5;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-dashoffset:0;stroke-opacity:1;paint-order:normal"
+         id="path4187"
+         transform="scale(-1,1)" />
+      <path
+         id="path4189"
+         style="opacity:1;fill:none;fill-opacity:1;stroke:#000000;stroke-width:0.5;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-dashoffset:0;stroke-opacity:1;paint-order:normal"
+         d="m 477.49976,-157.99979 a 2.5,2.5 0 0 1 2.5,2.5 2.5,2.5 0 0 1 -2.5,2.5 v -2.5 z" />
+    </g>
+  </g>
+</svg>

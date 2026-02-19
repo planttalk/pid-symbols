@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"
+     width="80.0" height="80.0" viewBox="0 0 80.0 80.0" display-inline="False">
+<defs>
+</defs>
+<path d="M30.0,35.0 L30.0,45.0" stroke="black" stroke-width="1.5" />
+<path d="M50.0,35.0 L50.0,45.0" stroke="black" stroke-width="1.5" />
+<path d="M30.0,35.0 C35.0,32.0,45.0,38.0,50.0,35.0" stroke="black" stroke-width="1.0" fill="none" />
+<path d="M30.0,45.0 C35.0,48.0,45.0,42.0,50.0,45.0" stroke="black" stroke-width="1.0" fill="none" />
+</svg>

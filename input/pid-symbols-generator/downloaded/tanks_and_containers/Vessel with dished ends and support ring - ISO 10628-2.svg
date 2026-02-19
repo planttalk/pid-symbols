@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- Created with Inkscape (http://www.inkscape.org/) -->
+
+<svg
+   width="58.208336mm"
+   height="58.208336mm"
+   viewBox="0 0 58.208336 58.208336"
+   version="1.1"
+   id="svg3361"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg">
+  <defs
+     id="defs3358" />
+  <g
+     id="layer1"
+     transform="translate(-124.8543,-153.51115)">
+    <g
+       id="g8695"
+       transform="translate(-111.10359,149.42975)">
+      <path
+         id="path2192"
+         d="m 267.49956,47.00024 v 5"
+         style="fill:none;stroke:#000000;stroke-width:0.25;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1" />
+      <path
+         id="path2194"
+         d="m 254.99956,19.50022 h -5"
+         style="fill:none;stroke:#000000;stroke-width:0.25;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1" />
+      <path
+         id="path2196"
+         d="m 257.49956,29.50022 v 12.5 c 0,0 2.5,2.5 10,2.5 7.5,0 10,-2.5 10,-2.5 v -12.5"
+         style="opacity:1;fill:none;fill-opacity:1;stroke:#000000;stroke-width:0.5;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-dashoffset:0;stroke-opacity:1;paint-order:normal" />
+      <path
+         style="opacity:1;fill:none;fill-opacity:1;stroke:#000000;stroke-width:0.5;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-dashoffset:0;stroke-opacity:1;paint-order:normal"
+         d="m 257.49956,29.50022 v -12.5 c 0,0 2.50104,-2.37502 10,-2.5 7.5,-0.125 10,2.5 10,2.5 v 12.5"
+         id="path2198" />
+      <path
+         style="opacity:1;fill:none;fill-opacity:1;stroke:#000000;stroke-width:0.5;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-dashoffset:0;stroke-opacity:1;paint-order:normal"
+         d="m 277.49956,24.50022 h 2.5 v 1.25 h -2.5"
+         id="path2202" />
+      <path
+         id="path2213"
+         d="m 257.49956,24.50022 h -2.5 v 1.25 h 2.5"
+         style="opacity:1;fill:none;fill-opacity:1;stroke:#000000;stroke-width:0.5;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-dashoffset:0;stroke-opacity:1;paint-order:normal" />
+    </g>
+  </g>
+</svg>

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"
+     width="60.0" height="160.0" viewBox="0 0 60.0 160.0" display-inline="False">
+<defs>
+</defs>
+<rect x="10.0" y="20.0" width="40.0" height="120.0" fill="white" stroke="black" stroke-width="1.5" />
+<ellipse cx="30.0" cy="20.0" rx="20.0" ry="8.0" fill="white" stroke="black" stroke-width="1.5" />
+<ellipse cx="30.0" cy="140.0" rx="20.0" ry="8.0" fill="white" stroke="black" stroke-width="1.5" />
+<path d="M12.0,43.33333333333333 L48.0,43.33333333333333" stroke="black" stroke-width="0.75" />
+<path d="M12.0,61.666666666666664 L48.0,61.666666666666664" stroke="black" stroke-width="0.75" />
+<path d="M12.0,80.0 L48.0,80.0" stroke="black" stroke-width="0.75" />
+<path d="M12.0,98.33333333333333 L48.0,98.33333333333333" stroke="black" stroke-width="0.75" />
+<path d="M12.0,116.66666666666666 L48.0,116.66666666666666" stroke="black" stroke-width="0.75" />
+</svg>

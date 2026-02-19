@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"
+     width="80.0" height="110.0" viewBox="0 0 80.0 110.0" display-inline="False">
+<defs>
+</defs>
+<path d="M32.0,67.0 L32.0,83.0 L40.0,75.0 Z" fill="white" stroke="black" stroke-width="1.0" />
+<path d="M48.0,67.0 L48.0,83.0 L40.0,75.0 Z" fill="white" stroke="black" stroke-width="1.0" />
+<circle cx="40.0" cy="75.0" r="3.6" fill="black" stroke="black" stroke-width="1.0" />
+<path d="M40.0,75.0 L40.0,59.0" stroke="black" stroke-width="1.0" />
+<path d="M40.0,63.0 L37.6,68.6 L42.4,68.6 Z" fill="black" />
+<rect x="32.0" y="41.0" width="16.0" height="16.0" fill="white" stroke="black" stroke-width="1.0" />
+<text x="40.0" y="49.0" font-size="8.8" text-anchor="middle" dominant-baseline="middle" font-family="Arial" font-weight="bold">M</text>
+</svg>

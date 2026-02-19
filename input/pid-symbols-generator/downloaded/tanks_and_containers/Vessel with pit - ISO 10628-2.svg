@@ -1,0 +1,118 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- Created with Inkscape (http://www.inkscape.org/) -->
+
+<svg
+   width="58.208336mm"
+   height="58.208336mm"
+   viewBox="0 0 58.208336 58.208336"
+   version="1.1"
+   id="svg3361"
+   xmlns:xlink="http://www.w3.org/1999/xlink"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg">
+  <defs
+     id="defs3358">
+    <pattern
+       xlink:href="#pattern4715"
+       id="pattern4719"
+       patternTransform="matrix(0.09760861,0.09760861,-0.09760861,0.09760861,263.75,184.50023)" />
+    <pattern
+       xlink:href="#pattern4055"
+       id="pattern4715"
+       patternTransform="matrix(0.09760861,0.09760861,-0.09760861,0.09760861,-16.125,102.00001)" />
+    <pattern
+       xlink:href="#Strips1_8"
+       id="pattern4055"
+       patternTransform="matrix(0.09760861,0.09760861,-0.09760861,0.09760861,-16.125,102)" />
+    <pattern
+       id="Strips1_8"
+       patternTransform="translate(0,0) scale(10,10)"
+       height="1"
+       width="9"
+       patternUnits="userSpaceOnUse">
+      <rect
+         id="rect3355"
+         height="2"
+         width="1"
+         y="-0.5"
+         x="0"
+         style="fill:black;stroke:none" />
+    </pattern>
+    <pattern
+       xlink:href="#pattern4715"
+       id="pattern4723"
+       patternTransform="matrix(0.09760861,0.09760861,-0.09760861,0.09760861,241.25,184.50023)" />
+    <pattern
+       xlink:href="#pattern4055"
+       id="pattern4244"
+       patternTransform="matrix(0.09760861,0.09760861,-0.09760861,0.09760861,-16.125,102.00001)" />
+    <pattern
+       xlink:href="#Strips1_8"
+       id="pattern4246"
+       patternTransform="matrix(0.09760861,0.09760861,-0.09760861,0.09760861,-16.125,102)" />
+    <pattern
+       id="pattern4250"
+       patternTransform="translate(0,0) scale(10,10)"
+       height="1"
+       width="9"
+       patternUnits="userSpaceOnUse">
+      <rect
+         id="rect4248"
+         height="2"
+         width="1"
+         y="-0.5"
+         x="0"
+         style="fill:black;stroke:none" />
+    </pattern>
+    <pattern
+       xlink:href="#pattern4715"
+       id="pattern4727"
+       patternTransform="matrix(0.09760861,0.09760861,-0.09760861,0.09760861,263.75,184.50023)" />
+    <pattern
+       xlink:href="#pattern4055"
+       id="pattern4253"
+       patternTransform="matrix(0.09760861,0.09760861,-0.09760861,0.09760861,-16.125,102.00001)" />
+    <pattern
+       xlink:href="#Strips1_8"
+       id="pattern4255"
+       patternTransform="matrix(0.09760861,0.09760861,-0.09760861,0.09760861,-16.125,102)" />
+    <pattern
+       id="pattern4259"
+       patternTransform="translate(0,0) scale(10,10)"
+       height="1"
+       width="9"
+       patternUnits="userSpaceOnUse">
+      <rect
+         id="rect4257"
+         height="2"
+         width="1"
+         y="-0.5"
+         x="0"
+         style="fill:black;stroke:none" />
+    </pattern>
+  </defs>
+  <g
+     id="layer1"
+     transform="translate(-178.78081,-332.90648)">
+    <g
+       id="g4883"
+       transform="translate(-264.61485,407.57293)">
+      <path
+         style="opacity:1;fill:none;fill-opacity:1;stroke:#000000;stroke-width:0.5;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-dashoffset:0;stroke-opacity:1;paint-order:normal"
+         d="m 472.49981,-60.49979 h -17.50002 c 0,0 -2.49999,2.5 -2.49996,7.5 0,5 2.49996,7.5 2.49996,7.5 h 7.50004 v 5 c 0,0 1.25,2.5 4.99997,2.5 3.75001,0 5.00001,-2.5 5.00001,-2.5 v -5 h 17.49999 c 0,0 2.50003,-2.5 2.50003,-7.5 -3e-5,-5 -2.50003,-7.5 -2.50003,-7.5 z"
+         id="path4306" />
+      <path
+         id="path4308"
+         d="m 449.99983,-52.99979 h -5.00002"
+         style="fill:none;stroke:#000000;stroke-width:0.25;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1" />
+      <path
+         style="fill:none;stroke:#000000;stroke-width:0.25;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
+         d="m 499.99984,-52.99979 h -5.00002"
+         id="path4310" />
+      <path
+         id="path4312"
+         d="m 467.49982,-30.49979 v -5"
+         style="fill:none;stroke:#000000;stroke-width:0.25;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1" />
+    </g>
+  </g>
+</svg>
