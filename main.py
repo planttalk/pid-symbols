@@ -21,8 +21,8 @@ Classification strategies (applied in order):
   6. unknown                        (if nothing matches)
 
 Usage:
-    python scripts/generate_metadata.py
-    python scripts/generate_metadata.py --dry-run
+    python main.py
+    python main.py --dry-run
 """
 
 import argparse
@@ -35,7 +35,7 @@ from pathlib import Path
 # ---------------------------------------------------------------------------
 # Paths
 # ---------------------------------------------------------------------------
-REPO_ROOT     = Path(__file__).resolve().parent.parent
+REPO_ROOT     = Path(__file__).resolve().parent   # repo root = same dir as main.py
 INPUT_DIR     = REPO_ROOT / "input"
 PROCESSED_DIR = REPO_ROOT / "processed"
 
@@ -487,16 +487,30 @@ def _safe_std_slug(standard: str) -> str:
     return _slugify(standard)
 
 
-def _normalize_stem(stem: str) -> str:
+def _normalize_stem(stem: str, standard: str) -> str:
     """
-    Produce a snake_case lowercase filename stem from any raw stem.
-    Strips embedded standard tags before slugifying.
-      "Agitator (general), stirrer (general) (ISO 10628-2)" -> "agitator_general_stirrer_general"
-      "valve_ball"                                           -> "valve_ball"
-      "Pump"                                                 -> "pump"
+    Produce a snake_case lowercase filename stem, prefixed with the standard slug.
+    The embedded standard tag is stripped from the body to avoid duplication.
+    If the body already starts with the standard slug, or standard is 'unknown',
+    no prefix is added.
+
+      "Agitator (general), stirrer (general) (ISO 10628-2)", "ISO 10628-2"
+          -> "iso_10628_2_agitator_general_stirrer_general"
+      "valve_ball", "ISA"
+          -> "isa_valve_ball"
+      "isa_actuator_diaphragm_actuator", "ISA"
+          -> "isa_actuator_diaphragm_actuator"   (already prefixed)
+      "Pump", "unknown"
+          -> "pump"                               (no prefix for unknown)
     """
     clean = _STANDARD_RE.sub("", stem).strip().strip(",").strip()
-    return _slugify(clean) or _slugify(stem)
+    body  = _slugify(clean) or _slugify(stem)
+
+    std_slug = _safe_std_slug(standard)
+    if standard == "unknown" or body.startswith(std_slug + "_") or body == std_slug:
+        return body
+
+    return f"{std_slug}_{body}"
 
 
 def processed_dir_for(classification: dict) -> Path:
@@ -605,7 +619,7 @@ def main() -> None:
             if target_dir not in used_stems:
                 used_stems[target_dir] = set()
 
-            base_stem  = _normalize_stem(svg_path.stem)
+            base_stem  = _normalize_stem(svg_path.stem, classification["standard"])
             final_stem = resolve_stem(base_stem, target_dir, used_stems[target_dir])
             meta       = build_metadata(svg_path, final_stem, classification)
         except Exception as exc:
