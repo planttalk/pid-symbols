@@ -569,6 +569,13 @@ def _normalize_stem(stem: str, standard: str) -> str:
     if standard == "unknown" or body.startswith(std_slug + "_") or body == std_slug:
         return body
 
+    # Strip short standard abbreviation prefix to avoid double-prefixing.
+    # e.g. body="iso_agitator_foo", std_slug="iso_10628_2" → strip "iso_" → "agitator_foo"
+    for short in ("isa_", "iso_", "din_", "pip_"):
+        if std_slug.startswith(short[:-1]) and body.startswith(short):
+            body = body[len(short):]
+            break
+
     return f"{std_slug}_{body}"
 
 
