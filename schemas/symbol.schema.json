@@ -1,0 +1,132 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pid-symbols/schemas/symbol.schema.json",
+  "title": "P&ID Symbol Metadata",
+  "description": "Metadata record for a single P&ID symbol in the processed/ registry.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "id",
+    "filename",
+    "display_name",
+    "standard",
+    "category",
+    "subcategory",
+    "source_path",
+    "svg_path",
+    "metadata_path",
+    "svg",
+    "file",
+    "classification",
+    "tags",
+    "snap_points",
+    "notes"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$",
+      "description": "Semantic version of this metadata schema."
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9_]+/[a-z0-9_]+/[a-z0-9_]+",
+      "description": "Stable symbol identifier: <standard_slug>/<category>/<stem>."
+    },
+    "filename": {
+      "type": "string",
+      "pattern": "\\.svg$",
+      "description": "Normalized snake_case filename of the processed SVG."
+    },
+    "original_filename": {
+      "type": "string",
+      "description": "Raw filename from the input source, before normalization."
+    },
+    "display_name": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Human-readable title derived from the filename."
+    },
+    "standard": {
+      "type": "string",
+      "description": "Governing standard (e.g. ISA, ISO 10628-2, DIN 2429, unknown)."
+    },
+    "category": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Top-level equipment/instrument category (e.g. valve, actuator, pump)."
+    },
+    "subcategory": {
+      "type": "string",
+      "description": "More specific classification within the category."
+    },
+    "source_path": {
+      "type": "string",
+      "description": "Relative path to the original SVG in input/."
+    },
+    "svg_path": {
+      "type": "string",
+      "description": "Relative path to the processed/minified SVG in processed/."
+    },
+    "metadata_path": {
+      "type": "string",
+      "description": "Relative path to this JSON file in processed/."
+    },
+    "svg": {
+      "type": "object",
+      "required": ["element_count", "has_text"],
+      "additionalProperties": false,
+      "properties": {
+        "width":         { "type": ["string", "null"] },
+        "height":        { "type": ["string", "null"] },
+        "view_box":      { "type": ["string", "null"] },
+        "element_count": { "type": "integer", "minimum": 0 },
+        "has_text":      { "type": "boolean" },
+        "creator":       { "type": ["string", "null"] }
+      }
+    },
+    "file": {
+      "type": "object",
+      "required": ["size_bytes"],
+      "additionalProperties": false,
+      "properties": {
+        "size_bytes": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "classification": {
+      "type": "object",
+      "required": ["confidence", "method"],
+      "additionalProperties": false,
+      "properties": {
+        "confidence": {
+          "type": "string",
+          "enum": ["high", "low", "none"]
+        },
+        "method": { "type": "string" }
+      }
+    },
+    "tags": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "description": "Auto-generated and/or manually curated search tags."
+    },
+    "snap_points": {
+      "type": "array",
+      "description": "Connection points for CAD integration (future enrichment).",
+      "items": {
+        "type": "object",
+        "required": ["id", "x", "y"],
+        "properties": {
+          "id": { "type": "string" },
+          "x":  { "type": "number" },
+          "y":  { "type": "number" }
+        }
+      }
+    },
+    "notes": {
+      "type": "string",
+      "description": "Free-text notes for manual annotation."
+    }
+  }
+}

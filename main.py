@@ -28,6 +28,7 @@ Usage:
 import argparse
 import json
 import re
+import shutil
 import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 from pathlib import Path
@@ -241,6 +242,56 @@ def _display_name_from_stem(stem: str) -> str:
     clean = _STANDARD_RE.sub("", stem).strip()
     words = re.split(r"[_\s,\-]+", clean)
     return " ".join(w.capitalize() for w in words if w)
+
+
+def _rel_or_abs(path: Path, base: Path) -> str:
+    """Return path relative to base, or absolute string if outside base."""
+    try:
+        return str(path.relative_to(base)).replace("\\", "/")
+    except ValueError:
+        return str(path).replace("\\", "/")
+
+
+def _auto_tags(category: str, subcategory: str) -> list[str]:
+    """
+    Build a de-duplicated tag list from category + subcategory words.
+      category="valve", subcategory="ball"              -> ["valve", "ball"]
+      category="actuator", subcategory="diaphragm_actuator" -> ["actuator", "diaphragm"]
+    """
+    seen: set[str] = set()
+    tags: list[str] = []
+    for word in [category] + subcategory.split("_"):
+        word = word.strip()
+        if word and word not in seen:
+            seen.add(word)
+            tags.append(word)
+    return tags
+
+
+# Ordered list of (compiled regex, replacement) for SVG minification
+_MINIFY_PATTERNS: list[tuple[re.Pattern, str]] = [
+    # XML declaration
+    (re.compile(r'<\?xml[^?]*\?>\s*\n?'), ''),
+    # DOCTYPE declaration (handles quoted system identifiers)
+    (re.compile(r'<!DOCTYPE[^[>]*(?:\[[^\]]*\])?\s*>\s*\n?', re.DOTALL), ''),
+    # <metadata>...</metadata> block
+    (re.compile(r'\s*<metadata\b[^>]*>.*?</metadata>\s*', re.DOTALL), '\n'),
+    # Inkscape / sodipodi self-closing elements
+    (re.compile(r'\s*<(?:sodipodi|inkscape):[^\s>][^/]*/>\s*', re.DOTALL), ''),
+    # Inkscape / sodipodi block elements
+    (re.compile(
+        r'\s*<(sodipodi|inkscape):[^\s>][^>]*>.*?</\1:[^>]*>\s*', re.DOTALL
+    ), ''),
+    # Collapse 3+ consecutive blank lines to one
+    (re.compile(r'\n{3,}'), '\n\n'),
+]
+
+
+def _minify_svg(content: str) -> str:
+    """Strip XML declaration, DOCTYPE, and editor metadata bloat from SVG."""
+    for pattern, replacement in _MINIFY_PATTERNS:
+        content = pattern.sub(replacement, content)
+    return content.strip()
 
 
 def parse_svg_attributes(svg_path: Path) -> dict:
@@ -535,12 +586,8 @@ def resolve_stem(base_stem: str, target_dir: Path, used: set[str]) -> str:
 
 def build_metadata(svg_path: Path, final_stem: str, classification: dict) -> dict:
     """Assemble the complete metadata dict for one SVG."""
-    svg_attrs = parse_svg_attributes(svg_path)
-
-    rel_input    = svg_path.relative_to(REPO_ROOT)
-    target_dir   = processed_dir_for(classification)
-    rel_svg_out  = (target_dir / (final_stem + ".svg")).relative_to(REPO_ROOT)
-    rel_meta_out = (target_dir / (final_stem + ".json")).relative_to(REPO_ROOT)
+    svg_attrs  = parse_svg_attributes(svg_path)
+    target_dir = processed_dir_for(classification)
 
     symbol_id = (
         f"{_safe_std_slug(classification['standard'])}"
@@ -549,17 +596,17 @@ def build_metadata(svg_path: Path, final_stem: str, classification: dict) -> dic
     )
 
     return {
-        "schema_version":  SCHEMA_VERSION,
-        "id":              symbol_id,
-        "filename":        final_stem + ".svg",
+        "schema_version":    SCHEMA_VERSION,
+        "id":                symbol_id,
+        "filename":          final_stem + ".svg",
         "original_filename": svg_path.name,
-        "display_name":    _display_name_from_stem(svg_path.stem),
-        "standard":        classification["standard"],
-        "category":        classification["category"],
-        "subcategory":     classification["subcategory"],
-        "source_path":     str(rel_input).replace("\\", "/"),
-        "svg_path":        str(rel_svg_out).replace("\\", "/"),
-        "metadata_path":   str(rel_meta_out).replace("\\", "/"),
+        "display_name":      _display_name_from_stem(svg_path.stem),
+        "standard":          classification["standard"],
+        "category":          classification["category"],
+        "subcategory":       classification["subcategory"],
+        "source_path":       _rel_or_abs(svg_path, REPO_ROOT),
+        "svg_path":          _rel_or_abs(target_dir / (final_stem + ".svg"), REPO_ROOT),
+        "metadata_path":     _rel_or_abs(target_dir / (final_stem + ".json"), REPO_ROOT),
         "svg": {
             "width":         svg_attrs["width"],
             "height":        svg_attrs["height"],
@@ -575,8 +622,7 @@ def build_metadata(svg_path: Path, final_stem: str, classification: dict) -> dic
             "confidence": classification["confidence"],
             "method":     classification["method"],
         },
-        # Fields intended for manual / future-tooling enrichment
-        "tags":        [],
+        "tags":        _auto_tags(classification["category"], classification["subcategory"]),
         "snap_points": [],
         "notes":       "",
     }
@@ -594,7 +640,22 @@ def main() -> None:
         "--dry-run", action="store_true",
         help="Parse and classify without writing any files."
     )
+    parser.add_argument(
+        "--input", default=None, metavar="DIR",
+        help="Input directory to scan for SVGs (default: <repo>/input)."
+    )
+    parser.add_argument(
+        "--output", default=None, metavar="DIR",
+        help="Output directory for processed files (default: <repo>/processed)."
+    )
     args = parser.parse_args()
+
+    # Override module-level path globals when CLI args are provided
+    global INPUT_DIR, PROCESSED_DIR
+    if args.input:
+        INPUT_DIR = Path(args.input).resolve()
+    if args.output:
+        PROCESSED_DIR = Path(args.output).resolve()
 
     generated_at = datetime.now(timezone.utc).isoformat()
 
@@ -640,11 +701,13 @@ def main() -> None:
         )
 
         if not args.dry_run:
-            import shutil
             target_dir.mkdir(parents=True, exist_ok=True)
 
-            # Copy SVG with normalized name
-            shutil.copy2(svg_path, target_dir / (final_stem + ".svg"))
+            # Write minified SVG (strips XML declaration, DOCTYPE, metadata bloat)
+            raw_svg = svg_path.read_text(encoding="utf-8", errors="replace")
+            (target_dir / (final_stem + ".svg")).write_text(
+                _minify_svg(raw_svg), encoding="utf-8"
+            )
 
             # Write metadata JSON
             json_path = target_dir / (final_stem + ".json")
