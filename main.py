@@ -360,6 +360,17 @@ def _strategy_autocad_folder(svg_path: Path) -> dict | None:
     standard, category = AUTOCAD_FOLDER_MAP[folder]
     stem = svg_path.stem
 
+    # pip_/pipa_ prefix → PIP standard, category from folder
+    for pip_prefix in PIPING_STEM_PREFIXES:
+        if stem.lower().startswith(pip_prefix):
+            return {
+                "standard":    "PIP",
+                "category":    category,
+                "subcategory": stem[len(pip_prefix):],
+                "confidence":  "high",
+                "method":      "autocad_folder_map",
+            }
+
     # Subcategory: strip known standard+category prefix from stem
     subcategory = stem
     for prefix in (
@@ -523,6 +534,13 @@ def classify(svg_path: Path) -> dict:
 
 # Metadata assembly
 
+# Categories that belong under processed/pip/ regardless of standard
+PIP_CATEGORIES = {"piping", "line_type", "pipe"}
+
+# Filename prefixes that identify PIP (Process Industry Practices) standard symbols
+PIPING_STEM_PREFIXES = ("pip_", "pipa_")
+
+
 def _safe_std_slug(standard: str) -> str:
     """Convert 'ISO 10628-2' → 'iso_10628_2' for use in output paths."""
     return _slugify(standard)
@@ -556,7 +574,10 @@ def _normalize_stem(stem: str, standard: str) -> str:
 
 def processed_dir_for(classification: dict) -> Path:
     """Return the processed/ subdirectory for this classification."""
-    return PROCESSED_DIR / _safe_std_slug(classification["standard"]) / classification["category"]
+    cat = classification["category"]
+    if cat in PIP_CATEGORIES:
+        return PROCESSED_DIR / "pip" / cat
+    return PROCESSED_DIR / _safe_std_slug(classification["standard"]) / cat
 
 
 def resolve_stem(base_stem: str, target_dir: Path, used: set[str]) -> str:
@@ -579,11 +600,11 @@ def build_metadata(svg_path: Path, final_stem: str, classification: dict) -> dic
     svg_attrs  = parse_svg_attributes(svg_path)
     target_dir = processed_dir_for(classification)
 
-    symbol_id = (
-        f"{_safe_std_slug(classification['standard'])}"
-        f"/{classification['category']}"
-        f"/{final_stem}"
-    )
+    cat = classification["category"]
+    if cat in PIP_CATEGORIES:
+        symbol_id = f"pip/{cat}/{final_stem}"
+    else:
+        symbol_id = f"{_safe_std_slug(classification['standard'])}/{cat}/{final_stem}"
 
     return {
         "schema_version":    SCHEMA_VERSION,
