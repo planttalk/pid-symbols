@@ -342,6 +342,7 @@ def _path_open_endpoints(d: str) -> list[tuple[float, float]]:
     Return the start and end coordinates of each non-closed subpath that
     contains at least one straight-line command (L/H/V).
     Pure arc/curve subpaths are skipped — they represent symbol bodies, not stubs.
+    Handles both absolute (L/H/V) and relative (l/h/v) commands.
     """
     results: list[tuple[float, float]] = []
     for sub in re.split(r'(?=[Mm])', d.strip()):
@@ -352,13 +353,35 @@ def _path_open_endpoints(d: str) -> list[tuple[float, float]]:
             continue  # closed path — no open ends
         if not re.search(r'[LlHhVv]', sub):
             continue  # only curves/arcs — skip
-        nums = [float(n) for n in re.findall(r'[-+]?\d*\.?\d+(?:[eE][-+]?\d+)?', sub)]
-        if len(nums) < 2:
-            continue
-        start = (nums[0], nums[1])
-        end   = (nums[-2], nums[-1]) if len(nums) >= 4 else start
-        results.append(start)
-        if end != start:
+        cur = [0.0, 0.0]
+        start: tuple[float, float] | None = None
+        end: tuple[float, float] | None = None
+        for cmd, args in re.findall(r'([MLHVmlhv])((?:[^MLHVZACSQTmlhvzacsqt])*)', sub):
+            nums = [float(n) for n in re.findall(r'[-+]?\d*\.?\d+(?:[eE][-+]?\d+)?', args)]
+            is_rel = cmd.islower()
+            cu = cmd.upper()
+            if cu == 'M' and len(nums) >= 2:
+                cur[:] = [cur[0] + nums[0] if is_rel else nums[0],
+                          cur[1] + nums[1] if is_rel else nums[1]]
+                if start is None:
+                    start = (cur[0], cur[1])
+                end = (cur[0], cur[1])
+            elif cu == 'L':
+                for i in range(0, len(nums) - 1, 2):
+                    cur[:] = [cur[0] + nums[i] if is_rel else nums[i],
+                              cur[1] + nums[i + 1] if is_rel else nums[i + 1]]
+                    end = (cur[0], cur[1])
+            elif cu == 'H':
+                for x in nums:
+                    cur[0] = cur[0] + x if is_rel else x
+                    end = (cur[0], cur[1])
+            elif cu == 'V':
+                for y in nums:
+                    cur[1] = cur[1] + y if is_rel else y
+                    end = (cur[0], cur[1])
+        if start is not None:
+            results.append(start)
+        if end is not None and end != start:
             results.append(end)
     return results
 
@@ -367,6 +390,7 @@ def _straight_segments(root) -> list[tuple[tuple, tuple]]:
     """
     Extract straight line segments from <line> elements and M/L/H/V path commands.
     Used to test whether a candidate snap point is an internal junction.
+    Handles both absolute (L/H/V) and relative (l/h/v) commands.
     """
     segs: list[tuple[tuple, tuple]] = []
     for elem in root.iter():
@@ -385,24 +409,27 @@ def _straight_segments(root) -> list[tuple[tuple, tuple]]:
                 r'([MLHVmlhv])((?:[^MLHVZACSQTmlhvzacsqt])*)', elem.get("d", "")
             ):
                 nums = [float(n) for n in re.findall(r'[-+]?\d*\.?\d+(?:[eE][-+]?\d+)?', args)]
+                is_rel = cmd.islower()
                 cu = cmd.upper()
                 if cu == 'M' and len(nums) >= 2:
-                    cur[:] = [nums[0], nums[1]]
+                    cur[:] = [cur[0] + nums[0] if is_rel else nums[0],
+                              cur[1] + nums[1] if is_rel else nums[1]]
                 elif cu == 'L':
                     for i in range(0, len(nums) - 1, 2):
-                        nxt = (nums[i], nums[i + 1])
+                        nxt = (cur[0] + nums[i] if is_rel else nums[i],
+                               cur[1] + nums[i + 1] if is_rel else nums[i + 1])
                         segs.append((tuple(cur), nxt))
                         cur[:] = list(nxt)
                 elif cu == 'H':
                     for x in nums:
-                        nxt = (x, cur[1])
+                        nxt = (cur[0] + x if is_rel else x, cur[1])
                         segs.append((tuple(cur), nxt))
-                        cur[0] = x
+                        cur[0] = nxt[0]
                 elif cu == 'V':
                     for y in nums:
-                        nxt = (cur[0], y)
+                        nxt = (cur[0], cur[1] + y if is_rel else y)
                         segs.append((tuple(cur), nxt))
-                        cur[1] = y
+                        cur[1] = nxt[1]
     return segs
 
 
@@ -428,11 +455,23 @@ def _label_floating(
 
     if category in _VALVE_CATS | _OPEN_END_CATS:
         by_x = sorted(floating, key=lambda p: p[0])
-        l, r = by_x[0], by_x[-1]
-        return [
-            {"id": "in",  "x": float(l[0]), "y": float(l[1])},
-            {"id": "out", "x": float(r[0]), "y": float(r[1])},
+        by_y = sorted(floating, key=lambda p: p[1])
+        x_span = by_x[-1][0] - by_x[0][0]
+        y_span = by_y[-1][1] - by_y[0][1]
+        # Choose the dominant axis to determine "in" and "out" ends.
+        horizontal = x_span >= y_span
+        primary_lo, primary_hi = (
+            (by_x[0], by_x[-1]) if horizontal else (by_y[0], by_y[-1])
+        )
+        result = [
+            {"id": "in",  "x": float(primary_lo[0]), "y": float(primary_lo[1])},
+            {"id": "out", "x": float(primary_hi[0]), "y": float(primary_hi[1])},
         ]
+        # Extra ports (3-way, 4-way, …): preserve all endpoints, labeled p1, p2, …
+        extras = [p for p in floating if p != primary_lo and p != primary_hi]
+        for i, (x, y) in enumerate(sorted(extras), 1):
+            result.append({"id": f"p{i}", "x": float(x), "y": float(y)})
+        return result
 
     pts = sorted(floating)
     if len(pts) == 2:
@@ -456,7 +495,7 @@ def detect_snap_points(svg_path: Path, category: str) -> list[dict]:
     Strategy 2 — Open-end: floating endpoints of non-closed straight-line paths,
                  filtered to remove internal junctions.
                  Applied only to valve/pipe-like categories where stubs are reliable.
-    Strategy 3 — Circle cardinal: N/S/E/W of the largest <circle>.
+    Strategy 3 — Bubble cardinal: N/S/E/W of the largest <circle> or <ellipse>.
                  Applied to instrument bubble / annotation categories.
     Strategy 4 — Category bbox: bounding-box extremes derived from all segments.
                  Fallback for actuators, equipment, and anything else.
@@ -470,8 +509,10 @@ def detect_snap_points(svg_path: Path, category: str) -> list[dict]:
         return []
 
     vb_parts = [float(v) for v in (root.get("viewBox") or "").split()]
-    vb_w = vb_parts[2] if len(vb_parts) >= 4 else None
-    vb_h = vb_parts[3] if len(vb_parts) >= 4 else None
+    if len(vb_parts) >= 4:
+        vb_x0, vb_y0, vb_w, vb_h = vb_parts[0], vb_parts[1], vb_parts[2], vb_parts[3]
+    else:
+        vb_x0 = vb_y0 = vb_w = vb_h = None
 
     # Strategy 1: semantically labelled elements
     id_pts: list[dict] = []
@@ -482,8 +523,11 @@ def detect_snap_points(svg_path: Path, category: str) -> list[dict]:
                for kw in ("port", "conn", "inlet", "outlet", "signal", "terminal", "snap")):
             local = elem.tag.split("}")[-1] if "}" in elem.tag else elem.tag
             x = y = None
-            if local == "circle":
+            if local in ("circle", "ellipse"):
                 x, y = float(elem.get("cx", 0)), float(elem.get("cy", 0))
+            elif local == "rect":
+                x = float(elem.get("x", 0)) + float(elem.get("width", 0)) / 2
+                y = float(elem.get("y", 0)) + float(elem.get("height", 0)) / 2
             elif local == "line":
                 x = (float(elem.get("x1", 0)) + float(elem.get("x2", 0))) / 2
                 y = (float(elem.get("y1", 0)) + float(elem.get("y2", 0))) / 2
@@ -527,42 +571,52 @@ def detect_snap_points(svg_path: Path, category: str) -> list[dict]:
         if floating:
             return _label_floating(floating, category)
 
-    # Strategy 3: circle cardinal points for instrument bubbles
+    # Strategy 3: circle/ellipse cardinal points for instrument bubbles
     if category in _BUBBLE_CATS:
-        circles: list[tuple[float, float, float]] = []
+        bubbles: list[tuple[float, float, float, float]] = []  # (rx, ry, cx, cy)
         for elem in root.iter():
             local = elem.tag.split("}")[-1] if "}" in elem.tag else elem.tag
             if local == "circle":
                 try:
-                    circles.append((
-                        float(elem.get("r", 0)),
+                    r = float(elem.get("r", 0))
+                    bubbles.append((r, r, float(elem.get("cx", 0)), float(elem.get("cy", 0))))
+                except ValueError:
+                    pass
+            elif local == "ellipse":
+                try:
+                    bubbles.append((
+                        float(elem.get("rx", 0)),
+                        float(elem.get("ry", 0)),
                         float(elem.get("cx", 0)),
                         float(elem.get("cy", 0)),
                     ))
                 except ValueError:
                     pass
-        if circles:
-            r, ccx, ccy = max(circles)
+        if bubbles:
+            rx, ry, ccx, ccy = max(bubbles, key=lambda b: b[0] * b[1])
             return [
-                {"id": "north", "x": round(ccx, 2),       "y": round(ccy - r, 2)},
-                {"id": "south", "x": round(ccx, 2),       "y": round(ccy + r, 2)},
-                {"id": "east",  "x": round(ccx + r, 2),   "y": round(ccy, 2)},
-                {"id": "west",  "x": round(ccx - r, 2),   "y": round(ccy, 2)},
+                {"id": "north", "x": round(ccx, 2),        "y": round(ccy - ry, 2)},
+                {"id": "south", "x": round(ccx, 2),        "y": round(ccy + ry, 2)},
+                {"id": "east",  "x": round(ccx + rx, 2),   "y": round(ccy, 2)},
+                {"id": "west",  "x": round(ccx - rx, 2),   "y": round(ccy, 2)},
             ]
 
     # Strategy 4: category bounding-box extremes.
     # Exclude segments that lie entirely on the viewBox boundary — these are
     # Matplotlib background rectangles, not symbol geometry.
     def _on_vb(x: float, y: float) -> bool:
-        return bool(vb_w and vb_h and (
-            abs(x) < 1 or abs(x - vb_w) < 1 or abs(y) < 1 or abs(y - vb_h) < 1
-        ))
+        if vb_w is None or vb_h is None:
+            return False
+        return (
+            abs(x - vb_x0) < 1 or abs(x - (vb_x0 + vb_w)) < 1 or
+            abs(y - vb_y0) < 1 or abs(y - (vb_y0 + vb_h)) < 1
+        )
 
     all_pts: list[tuple[float, float]] = [
         p for s, e in segs for p in (s, e)
         if not (_on_vb(*s) and _on_vb(*e))
     ]
-    # Also include circle extremes (covers symbols with no straight-line segments)
+    # Also include circle/ellipse extremes (covers symbols with no straight-line segments)
     for elem in root.iter():
         local = elem.tag.split("}")[-1] if "}" in elem.tag else elem.tag
         if local == "circle":
@@ -572,6 +626,16 @@ def detect_snap_points(svg_path: Path, category: str) -> list[dict]:
                 cr  = float(elem.get("r",  0))
                 all_pts += [(ccx - cr, ccy), (ccx + cr, ccy),
                             (ccx, ccy - cr), (ccx, ccy + cr)]
+            except ValueError:
+                pass
+        elif local == "ellipse":
+            try:
+                ccx = float(elem.get("cx", 0))
+                ccy = float(elem.get("cy", 0))
+                erx = float(elem.get("rx", 0))
+                ery = float(elem.get("ry", 0))
+                all_pts += [(ccx - erx, ccy), (ccx + erx, ccy),
+                            (ccx, ccy - ery), (ccx, ccy + ery)]
             except ValueError:
                 pass
     if not all_pts:
