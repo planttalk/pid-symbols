@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <title>Port Editor</title>
+  <link rel="stylesheet" href="style.css"/>
+</head>
+<body>
+
+<!-- ── LEFT: symbol browser ──────────────────────────────────────────── -->
+<div id="left">
+  <div id="left-header">
+    Symbols
+    <input id="sym-search" type="search" placeholder="Filter…">
+  </div>
+  <div id="sym-list"></div>
+</div>
+
+<!-- ── CENTRE: canvas ────────────────────────────────────────────────── -->
+<div id="center">
+  <div id="status-bar">No symbol loaded — select one on the left.</div>
+  <div id="canvas-wrap">
+    <svg id="editor-svg" xmlns="http://www.w3.org/2000/svg"
+         width="480" height="480" viewBox="0 0 80 80"
+         style="display:block; cursor:crosshair;">
+      <defs>
+        <pattern id="grid-pat" patternUnits="userSpaceOnUse" width="10" height="10">
+          <path d="M 10 0 L 0 0 0 10" fill="none" stroke="#bbb" stroke-width="0.3"/>
+        </pattern>
+      </defs>
+      <!-- grid background covers large area so it stays visible while panning -->
+      <rect id="grid-bg" x="-5000" y="-5000" width="10000" height="10000"
+            fill="url(#grid-pat)" display="none"/>
+      <!-- symbol image embedded as data-URI (avoids SVG ID conflicts) -->
+      <image id="sym-img" x="0" y="0" width="80" height="80"
+             preserveAspectRatio="none"/>
+      <!-- axis guide lines shown while dragging with a lock active -->
+      <line id="guide-h" stroke="#FF8800" stroke-width="0.4"
+            stroke-dasharray="2,2" display="none" pointer-events="none"
+            x1="-5000" x2="5000" y1="0" y2="0"/>
+      <line id="guide-v" stroke="#FF8800" stroke-width="0.4"
+            stroke-dasharray="2,2" display="none" pointer-events="none"
+            x1="0" x2="0" y1="-5000" y2="5000"/>
+      <!-- draggable port markers -->
+      <g id="port-layer"></g>
+    </svg>
+  </div>
+  <div id="canvas-hint">
+    Double-click to add &nbsp;|&nbsp; Drag to move &nbsp;|&nbsp;
+    Right-click to delete &nbsp;|&nbsp; Scroll to zoom &nbsp;|&nbsp;
+    Middle-drag to pan &nbsp;|&nbsp; Ctrl+click to multi-select &nbsp;|&nbsp;
+    Arrow keys to nudge
+  </div>
+</div>
+
+<!-- ── RIGHT: controls ───────────────────────────────────────────────── -->
+<div id="right">
+
+  <h3>Symbol</h3>
+  <div id="sym-info">—</div>
+
+  <hr/>
+  <h3>Port Type</h3>
+  <div id="type-grid"></div>
+
+  <hr/>
+  <h3>Grid</h3>
+  <div class="row">
+    <label><input type="checkbox" id="show-grid"> Show Grid</label>
+  </div>
+  <div class="row">
+    <label><input type="checkbox" id="snap-grid"> Snap to Grid</label>
+  </div>
+  <div class="row">
+    <label>Size
+      <input type="number" id="grid-size" value="10" min="1" max="200">
+    </label>
+  </div>
+
+  <hr/>
+  <h3>Axis Lock</h3>
+  <div class="row">
+    <label><input type="radio" name="axis" value="FREE" checked> Free</label>
+  </div>
+  <div class="row">
+    <label>
+      <input type="radio" name="axis" value="LOCK_X">
+      Lock X &mdash; vertical only
+    </label>
+  </div>
+  <div class="row">
+    <label>
+      <input type="radio" name="axis" value="LOCK_Y">
+      Lock Y &mdash; horizontal only
+    </label>
+  </div>
+
+  <hr/>
+  <h3>Ports</h3>
+  <div id="port-list"></div>
+
+  <div id="port-actions">
+    <button class="btn" id="btn-add">+ Add</button>
+    <button class="btn" id="btn-mid" disabled>&#x2295; Midpoint</button>
+    <button class="btn btn-danger" id="btn-del" disabled>&#x2715; Delete</button>
+  </div>
+  <div id="match-actions">
+    <button class="btn btn-match" id="btn-match-y" disabled>Match Y</button>
+    <button class="btn btn-match" id="btn-match-x" disabled>Match X</button>
+  </div>
+
+  <!-- per-port field editor -->
+  <div id="field-editor">
+    <div class="row">
+      <span class="field-label">ID</span>
+      <input type="text" id="f-id" placeholder="in / out / signal…">
+    </div>
+    <div class="row">
+      <span class="field-label">X</span>
+      <input type="number" id="f-x" step="0.5">
+    </div>
+    <div class="row">
+      <span class="field-label">Y</span>
+      <input type="number" id="f-y" step="0.5">
+    </div>
+  </div>
+
+  <hr/>
+  <button class="btn btn-save" id="btn-save">&#x1F4BE; Save JSON</button>
+  <div id="save-msg"></div>
+  <button class="btn btn-debug" id="btn-debug">&#x1F50D; Generate _debug.svg</button>
+
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
