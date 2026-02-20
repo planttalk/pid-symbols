@@ -23,6 +23,8 @@ Classification strategies (applied in order):
 Usage:
     python main.py
     python main.py --dry-run
+    python main.py --export-completed ./exported
+    python main.py --export-completed ./exported --export-source ./processed
 """
 
 import argparse
@@ -986,6 +988,75 @@ def build_metadata(svg_path: Path, final_stem: str, classification: dict) -> dic
     }
 
 
+def export_completed_symbols(source_dir: Path, export_dir: Path, dry_run: bool) -> None:
+    """Copy completed symbols (JSON + SVG) from source_dir to export_dir."""
+    if not source_dir.is_dir():
+        print(f"Error: source directory not found: {source_dir}")
+        return
+
+    json_files = sorted(source_dir.rglob("*.json"))
+    completed = 0
+    copied = 0
+    errors = 0
+    registry: list[dict] = []
+
+    for json_path in json_files:
+        if json_path.name == "registry.json" or "_debug" in json_path.stem:
+            continue
+        try:
+            meta = json.loads(json_path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            errors += 1
+            continue
+
+        if not meta.get("completed", False):
+            continue
+
+        svg_path = json_path.with_suffix(".svg")
+        if not svg_path.exists():
+            errors += 1
+            continue
+
+        rel = json_path.relative_to(source_dir)
+        target_json = export_dir / rel
+        target_svg = target_json.with_suffix(".svg")
+
+        completed += 1
+        if not dry_run:
+            target_json.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(json_path, target_json)
+            shutil.copy2(svg_path, target_svg)
+        copied += 1
+        registry.append(meta)
+
+    if not dry_run:
+        export_dir.mkdir(parents=True, exist_ok=True)
+        registry_path = export_dir / "registry.json"
+        with open(registry_path, "w", encoding="utf-8") as fh:
+            json.dump(
+                {
+                    "schema_version": SCHEMA_VERSION,
+                    "generated_at":   datetime.now(timezone.utc).isoformat(),
+                    "total_symbols":  len(registry),
+                    "symbols":        registry,
+                },
+                fh,
+                indent=2,
+                ensure_ascii=False,
+            )
+
+    print(f"\n{'='*60}")
+    print(f"  Completed : {completed}")
+    print(f"  Copied    : {copied if not dry_run else 0}")
+    print(f"  Errors    : {errors}")
+    if dry_run:
+        print("  [DRY RUN -- no files written]")
+    else:
+        print(f"  Output    : {export_dir}")
+        print("  Registry  : registry.json")
+    print(f"{'='*60}")
+
+
 # Main
 
 def main() -> None:
@@ -1004,6 +1075,14 @@ def main() -> None:
         "--output", default=None, metavar="DIR",
         help="Output directory for processed files (default: <repo>/processed)."
     )
+    parser.add_argument(
+        "--export-completed", default=None, metavar="DIR",
+        help="Export completed symbols (copy SVG+JSON) to DIR."
+    )
+    parser.add_argument(
+        "--export-source", default=None, metavar="DIR",
+        help="Source symbols root for export (default: <repo>/processed)."
+    )
     args = parser.parse_args()
 
     # Override module-level path globals when CLI args are provided
@@ -1012,6 +1091,13 @@ def main() -> None:
         INPUT_DIR = Path(args.input).resolve()
     if args.output:
         PROCESSED_DIR = Path(args.output).resolve()
+
+    if args.export_completed:
+        export_dir = Path(args.export_completed).resolve()
+        source_dir = (Path(args.export_source).resolve()
+                      if args.export_source else PROCESSED_DIR)
+        export_completed_symbols(source_dir, export_dir, args.dry_run)
+        return
 
     generated_at = datetime.now(timezone.utc).isoformat()
 

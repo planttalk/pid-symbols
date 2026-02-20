@@ -55,5 +55,6 @@ coverage.html
 # Claude Code
 .claude/
 
-# Generated output
+# Generated output and completed symbols
 processed/
+completed/
