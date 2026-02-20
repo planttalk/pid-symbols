@@ -29,6 +29,7 @@ PROCESSED_DIR = REPO_ROOT / "processed"
 _PORT_COLORS: dict[str, str] = {
     "in":      "#2196F3",  # blue
     "out":     "#F44336",  # red
+    "in_out":  "#009688",  # teal  (bidirectional)
     "signal":  "#9C27B0",  # purple
     "process": "#FF9800",  # orange
     "north":   "#4CAF50",  # green
@@ -70,6 +71,7 @@ def _overlay_svg(svg_text: str, snap_points: list[dict]) -> str:
         pid   = str(pt.get("id", "?"))
         x, y  = pt["x"], pt["y"]
         color = _PORT_COLORS.get(pid, _DEFAULT_COLOR)
+        disp  = "in/out" if pid == "in_out" else pid
         lines.append(
             f'  <circle cx="{x}" cy="{y}" r="{radius}"'
             f' fill="{color}" fill-opacity="0.8"'
@@ -79,7 +81,7 @@ def _overlay_svg(svg_text: str, snap_points: list[dict]) -> str:
             f'  <text x="{x + label_dx}" y="{y + label_dy}"'
             f' font-size="{label_size}" fill="{color}"'
             f' stroke="white" stroke-width="{text_sw}" paint-order="stroke"'
-            f'>{pid}</text>'
+            f'>{disp}</text>'
         )
     lines.append("</g>")
 
