@@ -23,9 +23,9 @@ Classification strategies (applied in order):
 Usage:
     python main.py
     python main.py --dry-run
-    python main.py --augment --augment-count 5
-    python main.py --augment-source processed --augment-count 5
-    python main.py --augment-source completed --augment-count 5
+    python main.py --augment --augment-count 5 --augment-min-size 256
+    python main.py --augment-source processed --augment-count 5 --augment-min-size 256
+    python main.py --augment-source completed --augment-count 5 --augment-min-size 256
     python main.py --export-completed ./exported
     python main.py --export-completed ./exported --export-source ./processed
 """
@@ -357,6 +357,7 @@ def augment_single_svg(
     count: int,
     dry_run: bool,
     transform,
+    min_size: int,
 ) -> tuple[int, int]:
     """Render a single SVG and write N augmented PNGs to output_dir."""
     import numpy as np
@@ -365,6 +366,14 @@ def augment_single_svg(
     try:
         png_bytes = _render_svg_to_png(svg_path)
         base = Image.open(io.BytesIO(png_bytes)).convert("RGB")
+        if min_size > 0:
+            w, h = base.size
+            short = min(w, h)
+            if short < min_size:
+                scale = min_size / max(short, 1)
+                new_w = max(1, int(round(w * scale)))
+                new_h = max(1, int(round(h * scale)))
+                base = base.resize((new_w, new_h), resample=Image.LANCZOS)
         base_arr = np.array(base)
     except Exception:
         return 0, 1
@@ -386,7 +395,7 @@ def augment_single_svg(
     return created, 0
 
 
-def augment_svgs(input_dir: Path, output_dir: Path, count: int, dry_run: bool) -> None:
+def augment_svgs(input_dir: Path, output_dir: Path, count: int, dry_run: bool, min_size: int) -> None:
     """Augment SVGs in input_dir and write PNGs to output_dir (no JSON/registry)."""
     if not input_dir.is_dir():
         print(f"Error: input directory not found: {input_dir}")
@@ -402,7 +411,7 @@ def augment_svgs(input_dir: Path, output_dir: Path, count: int, dry_run: bool) -
     for idx, svg_path in enumerate(svg_files, 1):
         rel = svg_path.relative_to(input_dir)
         target_dir = output_dir / rel.parent
-        made, err = augment_single_svg(svg_path, target_dir, count, dry_run, transform)
+        made, err = augment_single_svg(svg_path, target_dir, count, dry_run, transform, min_size)
         created += made
         errors += err
         print(f"  [{idx:>4}/{total}] {rel}")
@@ -1215,6 +1224,10 @@ def main() -> None:
         help="Number of augmented PNGs to generate per SVG (default: 5)."
     )
     parser.add_argument(
+        "--augment-min-size", type=int, default=256, metavar="PX",
+        help="Minimum short-side size in pixels for augmented PNGs (default: 256)."
+    )
+    parser.add_argument(
         "--augment-source", choices=["completed", "processed"], default=None,
         help="Use completed/ or processed/ as the input source."
     )
@@ -1252,7 +1265,10 @@ def main() -> None:
         if args.augment_count < 1:
             print("Error: --augment-count must be >= 1")
             return
-        augment_svgs(INPUT_DIR, PROCESSED_DIR, args.augment_count, args.dry_run)
+        if args.augment_min_size < 1:
+            print("Error: --augment-min-size must be >= 1")
+            return
+        augment_svgs(INPUT_DIR, PROCESSED_DIR, args.augment_count, args.dry_run, args.augment_min_size)
         return
 
     generated_at = datetime.now(timezone.utc).isoformat()
