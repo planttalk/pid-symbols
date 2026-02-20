@@ -300,6 +300,8 @@ async function nextSymbol() {
 // ─────────────────────────────────────────────────────────────────────────────
 function renderPorts() {
   portLayer.innerHTML = '';
+  const markerStyle =
+    document.querySelector('input[name=marker]:checked')?.value ?? 'crosshair';
 
   ports.forEach((p, i) => {
     const col   = portColor(p.id);
@@ -339,6 +341,7 @@ function renderPorts() {
     c.setAttribute('cy',           p.y);
     c.setAttribute('r',            portR);
     c.setAttribute('fill',         col);
+    c.setAttribute('fill-opacity', '0.55');
     c.setAttribute('stroke',       'white');
     c.setAttribute('stroke-width', portR * 0.15);
     // In midpoint mode show crosshair to signal "clickable target"
@@ -350,6 +353,32 @@ function renderPorts() {
     title.textContent = `${p.id}  (${p.x.toFixed(2)}, ${p.y.toFixed(2)})`;
     c.appendChild(title);
     portLayer.appendChild(c);
+
+    // Centre marker — style controlled by the "Port Marker" radio group
+    if (markerStyle === 'crosshair') {
+      const chSw = portR * 0.12;
+      for (const attrs of [
+        { x1: p.x - portR, y1: p.y,        x2: p.x + portR, y2: p.y        },
+        { x1: p.x,         y1: p.y - portR, x2: p.x,         y2: p.y + portR },
+      ]) {
+        const ln = document.createElementNS(NS, 'line');
+        ln.setAttribute('x1', attrs.x1); ln.setAttribute('y1', attrs.y1);
+        ln.setAttribute('x2', attrs.x2); ln.setAttribute('y2', attrs.y2);
+        ln.setAttribute('stroke',         'white');
+        ln.setAttribute('stroke-width',   chSw);
+        ln.setAttribute('pointer-events', 'none');
+        portLayer.appendChild(ln);
+      }
+    } else if (markerStyle === 'dot') {
+      const dot = document.createElementNS(NS, 'circle');
+      dot.setAttribute('cx',             p.x);
+      dot.setAttribute('cy',             p.y);
+      dot.setAttribute('r',              portR * 0.22);
+      dot.setAttribute('fill',           'white');
+      dot.setAttribute('pointer-events', 'none');
+      portLayer.appendChild(dot);
+    }
+    // markerStyle === 'none' → no centre indicator added
 
     // Label
     const label = p.id === 'in_out' ? 'in/out' : p.id;
@@ -708,6 +737,31 @@ function showMidPreview(px, py, ai, bi) {
   c.setAttribute('stroke-dasharray', dash);
   midLayer.appendChild(c);
 
+  // Centre marker on the ghost — follows the same marker style setting
+  const markerStyle = document.querySelector('input[name=marker]:checked')?.value ?? 'crosshair';
+  if (markerStyle === 'crosshair') {
+    const chSw = portR * 0.12;
+    for (const attrs of [
+      { x1: px - portR, y1: py,         x2: px + portR, y2: py         },
+      { x1: px,         y1: py - portR, x2: px,         y2: py + portR },
+    ]) {
+      const ln = document.createElementNS(NS, 'line');
+      ln.setAttribute('x1', attrs.x1); ln.setAttribute('y1', attrs.y1);
+      ln.setAttribute('x2', attrs.x2); ln.setAttribute('y2', attrs.y2);
+      ln.setAttribute('stroke',           '#FFD700');
+      ln.setAttribute('stroke-width',     chSw);
+      ln.setAttribute('stroke-dasharray', dash);
+      midLayer.appendChild(ln);
+    }
+  } else if (markerStyle === 'dot') {
+    const dot = document.createElementNS(NS, 'circle');
+    dot.setAttribute('cx',   px);
+    dot.setAttribute('cy',   py);
+    dot.setAttribute('r',    portR * 0.22);
+    dot.setAttribute('fill', '#FFD700');
+    midLayer.appendChild(dot);
+  }
+
   // Coordinate label
   const t = document.createElementNS(NS, 'text');
   t.setAttribute('x',           px + portR + labelSz * 0.3);
@@ -880,6 +934,12 @@ function showMsg(obj) {
 // ─────────────────────────────────────────────────────────────────────────────
 document.getElementById('sym-search').addEventListener('input',  filterSymbols);
 document.getElementById('show-grid').addEventListener('change',  toggleGrid);
+document.querySelectorAll('input[name=marker]').forEach(r =>
+  r.addEventListener('change', () => {
+    renderPorts();
+    if (midState?.step === 3) refreshMidPreview();
+  })
+);
 document.getElementById('grid-size').addEventListener('change',  updateGridPattern);
 
 document.getElementById('btn-add').addEventListener('click',     addPortCenter);
