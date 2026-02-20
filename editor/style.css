@@ -95,6 +95,51 @@ body {
   flex-shrink: 0;
 }
 
+/* Shown next to same-name symbols to let the user distinguish them */
+.sym-disambig {
+  font-size: 9px;
+  color: #666;
+  margin-left: 1px;
+}
+
+/* ── left panel: symbol preview ───────────────────────────────────────────── */
+#sym-preview {
+  flex-shrink: 0;
+  border-top: 1px solid #444;
+  background: #252525;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 4px 4px;
+  gap: 4px;
+  min-height: 120px;
+  overflow: hidden;
+}
+
+#sym-preview-img {
+  display: none;
+  max-width: 210px;
+  max-height: 96px;
+  object-fit: contain;
+  background: white;
+  border-radius: 2px;
+  padding: 2px;
+}
+
+#sym-preview-hint { font-size: 10px; color: #555; }
+
+#sym-preview-name {
+  font-size: 9px;
+  color: #888;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  width: 100%;
+  padding: 0 4px;
+}
+
 /* ── centre: status bar + scroll canvas + hint ────────────────────────────── */
 #status-bar {
   font-size: 11px;

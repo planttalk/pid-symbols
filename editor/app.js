@@ -174,6 +174,41 @@ svg.addEventListener('wheel', e => {
 }, { passive: false });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Symbol preview (hover on list item)
+// ─────────────────────────────────────────────────────────────────────────────
+const _svgCache   = new Map();   // path → svg string
+let   _prevTimer  = null;
+
+function _showPreview(svg, name) {
+  const hint = document.getElementById('sym-preview-hint');
+  const img  = document.getElementById('sym-preview-img');
+  const lbl  = document.getElementById('sym-preview-name');
+  hint.style.display = 'none';
+  img.src             = 'data:image/svg+xml,' + encodeURIComponent(svg);
+  img.style.display   = 'block';
+  lbl.textContent     = name;
+}
+
+async function previewSymbol(path, name) {
+  clearTimeout(_prevTimer);
+  _prevTimer = setTimeout(async () => {
+    if (_svgCache.has(path)) {
+      _showPreview(_svgCache.get(path), name);
+      return;
+    }
+    try {
+      const res  = await fetch('/api/symbol?path=' + encodeURIComponent(path));
+      if (!res.ok) return;
+      const data = await res.json();
+      // Evict oldest entry if cache is large
+      if (_svgCache.size >= 200) _svgCache.delete(_svgCache.keys().next().value);
+      _svgCache.set(path, data.svg);
+      _showPreview(data.svg, name);
+    } catch { /* silent */ }
+  }, 100);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Symbol list
 // ─────────────────────────────────────────────────────────────────────────────
 async function loadSymbolList() {
@@ -199,6 +234,15 @@ function renderSymbolList(list) {
   visibleSymbols = list;
   const el = document.getElementById('sym-list');
   el.innerHTML = '';
+
+  // Count occurrences of each name within each group so we can add a
+  // disambiguating path hint when the same name appears more than once.
+  const grpNameCount = {};  // key: "grp\x00name" → count
+  for (const s of list) {
+    const key = (s.standard || '') + '/' + (s.category || '') + '\x00' + s.name;
+    grpNameCount[key] = (grpNameCount[key] || 0) + 1;
+  }
+
   let lastGrp = null;
   for (const s of list) {
     const grp = (s.standard || '') + ' / ' + (s.category || '');
@@ -219,10 +263,23 @@ function renderSymbolList(list) {
       check.textContent = '✓';
       d.appendChild(check);
     }
-    const nameSpan = document.createTextNode(s.name);
-    d.appendChild(nameSpan);
+    d.appendChild(document.createTextNode(s.name));
+
+    // If multiple symbols share the same name in this group, show the
+    // distinguishing part of the path (everything except the last segment).
+    const key = (s.standard || '') + '/' + (s.category || '') + '\x00' + s.name;
+    if (grpNameCount[key] > 1) {
+      const parts  = s.path.split('/');
+      const hint   = parts.length > 1 ? parts.slice(0, -1).join('/') : s.path;
+      const disambig = document.createElement('span');
+      disambig.className   = 'sym-disambig';
+      disambig.textContent = ' · ' + hint;
+      d.appendChild(disambig);
+    }
+
     d.title = s.path;
-    d.addEventListener('click', () => loadSymbol(s.path));
+    d.addEventListener('mouseenter', () => previewSymbol(s.path, s.name));
+    d.addEventListener('click',      () => loadSymbol(s.path));
     el.appendChild(d);
   }
 }
@@ -248,6 +305,13 @@ async function loadSymbol(relPath) {
   const data = await res.json();
 
   symbolMeta = data.meta;
+
+  // Cache the SVG now so subsequent hover-previews are instant
+  if (!_svgCache.has(relPath)) {
+    if (_svgCache.size >= 200) _svgCache.delete(_svgCache.keys().next().value);
+    _svgCache.set(relPath, data.svg);
+  }
+
   ports = JSON.parse(JSON.stringify(data.meta.snap_points || []));
   ports.forEach(p => {
     p.locked = !!p.locked;
@@ -293,8 +357,9 @@ async function loadSymbol(relPath) {
   symImg.setAttribute('width',  vw);
   symImg.setAttribute('height', vh);
 
-  document.getElementById('sym-info').textContent =
-    (symbolMeta.display_name || symbolMeta.id || relPath) + '\n' + relPath;
+  const displayName = symbolMeta.display_name || symbolMeta.id || relPath.split('/').pop();
+  document.getElementById('sym-info').textContent = displayName + '\n' + relPath;
+  _showPreview(data.svg, displayName);
 
   setStatus('Loaded: ' + relPath + '  (' + ports.length + ' port' +
             (ports.length === 1 ? '' : 's') + ')');
