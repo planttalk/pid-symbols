@@ -1,7 +1,7 @@
 'use strict';
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Port type definitions (id → label + color)
+// Port type definitions
 // ─────────────────────────────────────────────────────────────────────────────
 const PORT_TYPES = [
   { id: 'in',      label: 'In',      color: '#2196F3' },
@@ -25,29 +25,39 @@ function portColor(id) {
 // ─────────────────────────────────────────────────────────────────────────────
 // State
 // ─────────────────────────────────────────────────────────────────────────────
-let allSymbols  = [];       // [{path, name, standard, category}]
-let currentPath = null;     // currently loaded symbol path (no extension)
-let symbolMeta  = null;     // parsed JSON metadata object
-let ports       = [];       // [{id, x, y}] — working copy
+let allSymbols    = [];       // [{path, name, standard, category}] — full list
+let visibleSymbols = [];      // currently shown (filtered) symbols
+let currentPath   = null;
+let symbolMeta    = null;
+let ports         = [];       // [{id, x, y}]
 
-let selection   = new Set(); // indices of selected ports
-let selIdx      = null;      // primary selected port (drives field editor)
+let selection     = new Set();
+let selIdx        = null;     // primary selected port (drives field editor)
 
-let drag        = null;      // {idx} — set while dragging a port
-let panState    = null;      // {clientX, clientY, vbX, vbY} — set while panning
+let drag          = null;     // {idx} while dragging
+let matchMode     = null;     // null | 'Y' | 'X'
 
-let matchMode   = null;      // null | 'Y' | 'X' — armed match axis
-let activeType  = 'in';     // port type applied to newly created ports
+// Midpoint state machine:
+//   null                          → idle
+//   { step: 1 }                   → waiting for first reference port
+//   { step: 2, a }                → first ref picked, waiting for second
+//   { step: 3, a, b, px, py }    → both refs picked, preview shown
+let midState      = null;
 
-let vw = 80, vh = 80;       // current symbol viewBox width/height
-let portR   = 3;             // port circle radius in viewBox units
-let labelSz = 3.3;           // port label font-size in viewBox units
+let activeType    = 'in';     // type applied to newly created ports
+
+let vw = 80, vh = 80;        // current symbol viewBox dimensions (never changes after load)
+let portR   = 3;
+let labelSz = 3.3;
+let initSvgW = 480, initSvgH = 480;  // pixel size at fit-to-window (min zoom bound)
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Element shortcuts
 // ─────────────────────────────────────────────────────────────────────────────
 const svg       = document.getElementById('editor-svg');
+const wrap      = document.getElementById('canvas-wrap');
 const portLayer = document.getElementById('port-layer');
+const midLayer  = document.getElementById('mid-layer');
 const symImg    = document.getElementById('sym-img');
 const guideH    = document.getElementById('guide-h');
 const guideV    = document.getElementById('guide-v');
@@ -92,8 +102,7 @@ function snap(v) {
 }
 
 function toggleGrid() {
-  const on = document.getElementById('show-grid').checked;
-  gridBg.setAttribute('display', on ? '' : 'none');
+  gridBg.setAttribute('display', document.getElementById('show-grid').checked ? '' : 'none');
 }
 
 function updateGridPattern() {
@@ -107,11 +116,12 @@ function updateGridPattern() {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // SVG coordinate transform
-// Uses viewBox.baseVal so zoom and pan are automatically accounted for.
+// viewBox is always "0 0 vw vh" — only the SVG element's pixel size changes on
+// zoom, so getBoundingClientRect() correctly reflects any zoom level.
 // ─────────────────────────────────────────────────────────────────────────────
 function toSvgCoords(clientX, clientY) {
   const rect = svg.getBoundingClientRect();
-  const vb   = svg.viewBox.baseVal;
+  const vb   = svg.viewBox.baseVal;   // always 0 0 vw vh
   return {
     x: vb.x + (clientX - rect.left) * vb.width  / rect.width,
     y: vb.y + (clientY - rect.top)  * vb.height / rect.height,
@@ -119,34 +129,38 @@ function toSvgCoords(clientX, clientY) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Zoom (scroll wheel — zoom around the cursor position)
+// Zoom — grows/shrinks the SVG element; canvas-wrap provides scrollbars.
+// The viewBox is never changed; only width/height attributes are updated.
+// Zoom is anchored to the cursor position.
 // ─────────────────────────────────────────────────────────────────────────────
 svg.addEventListener('wheel', e => {
   if (!currentPath) return;
   e.preventDefault();
-  const pt     = toSvgCoords(e.clientX, e.clientY);
-  const factor = e.deltaY > 0 ? 1.12 : 1 / 1.12;
-  const vb     = svg.viewBox.baseVal;
-  const nx     = pt.x - (pt.x - vb.x) * factor;
-  const ny     = pt.y - (pt.y - vb.y) * factor;
-  svg.setAttribute('viewBox', `${nx} ${ny} ${vb.width * factor} ${vb.height * factor}`);
+
+  const factor   = e.deltaY > 0 ? 1.0 / 1.15 : 1.15;
+  const oldW     = parseFloat(svg.getAttribute('width'));
+  const oldH     = parseFloat(svg.getAttribute('height'));
+
+  // Clamp: cannot zoom out past initial fit-to-window, max 3000 px in any dim
+  const maxW = Math.min(Math.max(vw, vh) * 20, 3000);
+  const newW = Math.max(initSvgW, Math.min(maxW, oldW * factor));
+  const newH = newW * (vh / vw);  // maintain aspect ratio
+
+  if (Math.abs(newW - oldW) < 0.5) return;  // at limit, nothing to do
+
+  // Cursor as fraction [0..1] of current SVG pixel size
+  const svgRect = svg.getBoundingClientRect();
+  const fx = (e.clientX - svgRect.left) / svgRect.width;
+  const fy = (e.clientY - svgRect.top)  / svgRect.height;
+
+  svg.setAttribute('width',  Math.round(newW));
+  svg.setAttribute('height', Math.round(newH));
+
+  // Adjust scroll so the point under the cursor stays fixed on screen
+  const wrapRect = wrap.getBoundingClientRect();
+  wrap.scrollLeft = fx * newW - (e.clientX - wrapRect.left);
+  wrap.scrollTop  = fy * newH - (e.clientY - wrapRect.top);
 }, { passive: false });
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Middle-drag pan
-// ─────────────────────────────────────────────────────────────────────────────
-svg.addEventListener('mousedown', e => {
-  if (e.button !== 1) return;
-  e.preventDefault();
-  const vb = svg.viewBox.baseVal;
-  panState = { clientX: e.clientX, clientY: e.clientY, vbX: vb.x, vbY: vb.y };
-  svg.style.cursor = 'move';
-});
-
-// Suppress context menu that some browsers show on middle-click release
-svg.addEventListener('contextmenu', e => {
-  if (panState !== null) e.preventDefault();
-});
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Symbol list
@@ -171,6 +185,7 @@ function filterSymbols() {
 }
 
 function renderSymbolList(list) {
+  visibleSymbols = list;
   const el = document.getElementById('sym-list');
   el.innerHTML = '';
   let lastGrp = null;
@@ -192,15 +207,21 @@ function renderSymbolList(list) {
   }
 }
 
+function scrollSymListToActive() {
+  const active = document.querySelector('#sym-list .sym-item.active');
+  if (active) active.scrollIntoView({ block: 'nearest' });
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Symbol loading
 // ─────────────────────────────────────────────────────────────────────────────
 async function loadSymbol(relPath) {
-  if (drag || panState) return;  // don't interrupt an interaction
+  if (drag) return;
   currentPath = relPath;
   selection   = new Set();
   selIdx      = null;
   cancelMatch();
+  cancelMidMode();
 
   const res = await fetch('/api/symbol?path=' + encodeURIComponent(relPath));
   if (!res.ok) { setStatus('Error loading ' + relPath); return; }
@@ -209,7 +230,7 @@ async function loadSymbol(relPath) {
   symbolMeta = data.meta;
   ports      = JSON.parse(JSON.stringify(data.meta.snap_points || []));
 
-  // Parse viewBox (take width/height from parts[2] and parts[3])
+  // Parse viewBox dimensions
   const vbMatch = data.svg.match(/viewBox=["']([^"']+)["']/);
   if (vbMatch) {
     const parts = vbMatch[1].trim().split(/[\s,]+/).map(Number);
@@ -222,16 +243,24 @@ async function loadSymbol(relPath) {
   portR   = Math.max(2, Math.min(vw, vh) * 0.04);
   labelSz = portR * 1.1;
 
-  // Reset SVG element size (fit within 480×480, preserve aspect ratio)
-  const MAX   = 480;
-  const scale = Math.min(MAX / vw, MAX / vh);
+  // Size SVG to fit inside canvas-wrap, preserving aspect ratio
+  const wrapW = wrap.clientWidth  || 600;
+  const wrapH = wrap.clientHeight || 500;
+  const scale = Math.min(wrapW / vw, wrapH / vh) * 0.96;
+  initSvgW = Math.round(vw * scale);
+  initSvgH = Math.round(vh * scale);
+
   svg.setAttribute('viewBox', `0 0 ${vw} ${vh}`);
-  svg.setAttribute('width',   Math.round(vw * scale));
-  svg.setAttribute('height',  Math.round(vh * scale));
+  svg.setAttribute('width',   initSvgW);
+  svg.setAttribute('height',  initSvgH);
+
+  // Reset scroll to origin
+  wrap.scrollLeft = 0;
+  wrap.scrollTop  = 0;
 
   updateGridPattern();
 
-  // Embed symbol as data-URI so its internal IDs don't collide with ours
+  // Embed symbol as data-URI so its internal IDs don't collide
   symImg.setAttribute('href',   'data:image/svg+xml,' + encodeURIComponent(data.svg));
   symImg.setAttribute('width',  vw);
   symImg.setAttribute('height', vh);
@@ -244,7 +273,26 @@ async function loadSymbol(relPath) {
   renderPorts();
   renderPortList();
   clearFields();
-  renderSymbolList(allSymbols);  // refresh active highlight
+  renderSymbolList(visibleSymbols);  // refresh active highlight
+  scrollSymListToActive();
+
+  document.getElementById('btn-next').disabled = false;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Next symbol (saves current JSON first)
+// ─────────────────────────────────────────────────────────────────────────────
+async function nextSymbol() {
+  if (!currentPath) return;
+  const saved = await saveJSON(/*silent=*/true);
+  if (!saved) return;  // save failed, don't navigate
+
+  const idx = visibleSymbols.findIndex(s => s.path === currentPath);
+  if (idx < 0 || idx >= visibleSymbols.length - 1) {
+    setStatus('No more symbols in the current list.');
+    return;
+  }
+  await loadSymbol(visibleSymbols[idx + 1].path);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -257,6 +305,7 @@ function renderPorts() {
     const col   = portColor(p.id);
     const isSel = selection.has(i);
 
+    // Selection halo
     if (isSel) {
       const halo = document.createElementNS(NS, 'circle');
       halo.setAttribute('cx',           p.x);
@@ -268,6 +317,23 @@ function renderPorts() {
       portLayer.appendChild(halo);
     }
 
+    // Midpoint reference ring (gold dashed) — step 2 highlights A, step 3 highlights A and B
+    const isMidRef =
+      (midState && midState.step >= 2 && midState.a === i) ||
+      (midState && midState.step === 3 && midState.b === i);
+    if (isMidRef) {
+      const ring = document.createElementNS(NS, 'circle');
+      ring.setAttribute('cx',             p.x);
+      ring.setAttribute('cy',             p.y);
+      ring.setAttribute('r',              portR * 2.3);
+      ring.setAttribute('fill',           'none');
+      ring.setAttribute('stroke',         '#FFD700');
+      ring.setAttribute('stroke-width',   portR * 0.18);
+      ring.setAttribute('stroke-dasharray', `${portR * 0.9} ${portR * 0.45}`);
+      portLayer.appendChild(ring);
+    }
+
+    // Port circle
     const c = document.createElementNS(NS, 'circle');
     c.setAttribute('cx',           p.x);
     c.setAttribute('cy',           p.y);
@@ -275,7 +341,8 @@ function renderPorts() {
     c.setAttribute('fill',         col);
     c.setAttribute('stroke',       'white');
     c.setAttribute('stroke-width', portR * 0.15);
-    c.style.cursor = 'grab';
+    // In midpoint mode show crosshair to signal "clickable target"
+    c.style.cursor = midState ? 'crosshair' : 'grab';
     c.addEventListener('mousedown',   ev => onPortDown(ev, i));
     c.addEventListener('contextmenu', ev => { ev.preventDefault(); ctxDelete(i); });
 
@@ -284,6 +351,7 @@ function renderPorts() {
     c.appendChild(title);
     portLayer.appendChild(c);
 
+    // Label
     const label = p.id === 'in_out' ? 'in/out' : p.id;
     const t = document.createElementNS(NS, 'text');
     t.setAttribute('x',              p.x + portR + labelSz * 0.25);
@@ -321,12 +389,13 @@ function renderPortList() {
 }
 
 function onPortRowClick(ev, i) {
-  // Match mode: clicking a row sets the target
+  if (midState) { handleMidPortClick(i); return; }
+
   if (matchMode && selIdx !== null && i !== selIdx) {
     applyMatch(i);
     return;
   }
-  // Multi-select with Ctrl/Cmd
+
   if (ev.ctrlKey || ev.metaKey) {
     selection.has(i) ? selection.delete(i) : selection.add(i);
     selIdx = i;
@@ -340,14 +409,15 @@ function onPortRowClick(ev, i) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Action buttons state
+// Action button enable/disable
 // ─────────────────────────────────────────────────────────────────────────────
 function updateActionButtons() {
-  const n = selection.size;
+  const n      = selection.size;
+  const hasSym = currentPath !== null;
   document.getElementById('btn-del').disabled     = n === 0;
-  document.getElementById('btn-mid').disabled     = n !== 2;
-  document.getElementById('btn-match-y').disabled = n !== 1;
-  document.getElementById('btn-match-x').disabled = n !== 1;
+  document.getElementById('btn-mid').disabled     = !hasSym;
+  document.getElementById('btn-match-y').disabled = n !== 1 || !!midState;
+  document.getElementById('btn-match-x').disabled = n !== 1 || !!midState;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -367,21 +437,19 @@ function selectPort(idx, additive = false) {
 }
 
 function ctxDelete(idx) {
-  // Right-click: make it the only selection, then delete
   selection = new Set([idx]);
   selIdx    = idx;
   deleteSelected();
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Field editor sync
+// Field editor
 // ─────────────────────────────────────────────────────────────────────────────
 function populateFields(idx) {
   const p = ports[idx];
   document.getElementById('f-id').value = p.id;
   document.getElementById('f-x').value  = p.x;
   document.getElementById('f-y').value  = p.y;
-  // Sync active type button when loading a port with a known type
   if (TYPE_COLOR[p.id]) setActiveType(p.id);
 }
 
@@ -406,23 +474,31 @@ function applyXY() {
   if (!isNaN(y)) ports[selIdx].y = +y.toFixed(2);
   renderPorts();
   renderPortList();
+  // If in midState step 3, the preview references might be stale; refresh it
+  if (midState && midState.step === 3) refreshMidPreview();
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Drag (left-button only; Ctrl+click adds to selection instead)
+// Drag (left-button, blocked in midpoint mode)
 // ─────────────────────────────────────────────────────────────────────────────
 function onPortDown(e, idx) {
   if (e.button !== 0) return;
   e.preventDefault();
   e.stopPropagation();
 
-  // In match mode, clicking a canvas port applies the match
+  // Midpoint pick: delegate to state machine
+  if (midState !== null) {
+    handleMidPortClick(idx);
+    return;
+  }
+
+  // Match mode: apply match to clicked port
   if (matchMode && selIdx !== null && idx !== selIdx) {
     applyMatch(idx);
     return;
   }
 
-  // Ctrl+click toggles selection without starting a drag
+  // Ctrl+click → multi-select (no drag)
   if (e.ctrlKey || e.metaKey) {
     selectPort(idx, true);
     return;
@@ -433,39 +509,26 @@ function onPortDown(e, idx) {
 }
 
 document.addEventListener('mousemove', e => {
-  // ── port drag ────────────────────────────────────────────────────────
-  if (drag) {
-    const pt   = toSvgCoords(e.clientX, e.clientY);
-    const lock = document.querySelector('input[name=axis]:checked').value;
-    const p    = ports[drag.idx];
+  if (!drag) return;
+  const pt   = toSvgCoords(e.clientX, e.clientY);
+  const lock = document.querySelector('input[name=axis]:checked').value;
+  const p    = ports[drag.idx];
 
-    let nx = lock === 'LOCK_X' ? p.x : +snap(pt.x).toFixed(2);
-    let ny = lock === 'LOCK_Y' ? p.y : +snap(pt.y).toFixed(2);
+  const nx = lock === 'LOCK_X' ? p.x : +snap(pt.x).toFixed(2);
+  const ny = lock === 'LOCK_Y' ? p.y : +snap(pt.y).toFixed(2);
 
-    p.x = nx;
-    p.y = ny;
+  p.x = nx;
+  p.y = ny;
 
-    renderPorts();
-    renderPortList();
-    populateFields(drag.idx);
-    updateGuides(nx, ny, lock);
-    setStatus(`"${p.id}"  x=${nx}  y=${ny}`);
-  }
-
-  // ── middle-drag pan ──────────────────────────────────────────────────
-  if (panState) {
-    const vb   = svg.viewBox.baseVal;
-    const rect = svg.getBoundingClientRect();
-    const dx   = (e.clientX - panState.clientX) * vb.width  / rect.width;
-    const dy   = (e.clientY - panState.clientY) * vb.height / rect.height;
-    svg.setAttribute('viewBox',
-      `${panState.vbX - dx} ${panState.vbY - dy} ${vb.width} ${vb.height}`);
-  }
+  renderPorts();
+  renderPortList();
+  populateFields(drag.idx);
+  updateGuides(nx, ny, lock);
+  setStatus(`"${p.id}"  x=${nx}  y=${ny}`);
 });
 
 document.addEventListener('mouseup', e => {
-  if (drag     && e.button === 0) { drag     = null; hideGuides(); }
-  if (panState && e.button === 1) { panState = null; svg.style.cursor = 'crosshair'; }
+  if (drag && e.button === 0) { drag = null; hideGuides(); }
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -473,13 +536,11 @@ document.addEventListener('mouseup', e => {
 // ─────────────────────────────────────────────────────────────────────────────
 function updateGuides(nx, ny, lock) {
   if (lock === 'LOCK_Y') {
-    // Port is constrained to a fixed Y — show horizontal guide at that Y
     guideH.setAttribute('y1', ny);
     guideH.setAttribute('y2', ny);
     guideH.removeAttribute('display');
     guideV.setAttribute('display', 'none');
   } else if (lock === 'LOCK_X') {
-    // Port is constrained to a fixed X — show vertical guide at that X
     guideV.setAttribute('x1', nx);
     guideV.setAttribute('x2', nx);
     guideV.removeAttribute('display');
@@ -495,17 +556,27 @@ function hideGuides() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Double-click canvas → add port at that SVG position
+// Double-click canvas → add port
 // ─────────────────────────────────────────────────────────────────────────────
 svg.addEventListener('dblclick', e => {
   if (!currentPath) return;
-  if (e.target.tagName.toLowerCase() === 'circle') return; // ignore port hits
+  if (midState) return;   // don't accidentally add ports during midpoint mode
+  if (e.target.tagName.toLowerCase() === 'circle') return;
   const pt = toSvgCoords(e.clientX, e.clientY);
   addPort(+snap(pt.x).toFixed(2), +snap(pt.y).toFixed(2));
 });
 
+// Single click on canvas → confirm midpoint placement (step 3 only)
+svg.addEventListener('click', e => {
+  if (!midState || midState.step !== 3) return;
+  if (e.detail > 1) return;  // ignore clicks that are part of a dblclick
+  // Port clicks are handled by onPortDown; this catches empty-canvas clicks
+  if (e.target.tagName.toLowerCase() === 'circle') return;
+  confirmMidpoint();
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
-// Add / Delete / Midpoint
+// Add / Delete ports
 // ─────────────────────────────────────────────────────────────────────────────
 function addPort(x, y, id = null) {
   ports.push({ id: id ?? activeType, x, y });
@@ -525,7 +596,6 @@ function addPortCenter() {
 
 function deleteSelected() {
   if (selection.size === 0) return;
-  // Remove in reverse index order so earlier indices stay valid
   const sorted = [...selection].sort((a, b) => b - a);
   for (const idx of sorted) ports.splice(idx, 1);
 
@@ -538,13 +608,136 @@ function deleteSelected() {
   if (selIdx !== null) populateFields(selIdx); else clearFields();
 }
 
-function placeMidpoint() {
-  if (selection.size !== 2) return;
-  const [a, b] = [...selection];
-  const x = +((ports[a].x + ports[b].x) / 2).toFixed(2);
-  const y = +((ports[a].y + ports[b].y) / 2).toFixed(2);
-  addPort(x, y);
-  setStatus(`Midpoint placed at (${x}, ${y})`);
+// ─────────────────────────────────────────────────────────────────────────────
+// Midpoint state machine
+// ─────────────────────────────────────────────────────────────────────────────
+
+function startMidpointMode() {
+  if (!currentPath) return;
+  if (midState) { cancelMidMode(); return; }  // toggle off if already active
+  cancelMatch();
+  selection = new Set();
+  selIdx    = null;
+  midState  = { step: 1 };
+  document.getElementById('btn-mid').classList.add('armed');
+  setStatus('Midpoint: click first reference port  (Escape to cancel)');
+  renderPorts();
+  renderPortList();
+  updateActionButtons();
+}
+
+function handleMidPortClick(idx) {
+  if (!midState) return;
+
+  if (midState.step === 1) {
+    // First reference picked
+    midState = { step: 2, a: idx };
+    setStatus(`Midpoint: "${ports[idx].id}" selected — click second reference port`);
+    renderPorts();
+
+  } else if (midState.step === 2) {
+    if (idx === midState.a) return;  // same port, ignore
+    // Both references known — compute preview
+    const a = midState.a;
+    const px = +((ports[a].x + ports[idx].x) / 2).toFixed(2);
+    const py = +((ports[a].y + ports[idx].y) / 2).toFixed(2);
+    midState = { step: 3, a, b: idx, px, py };
+    showMidPreview(px, py, a, idx);
+    setStatus(`Midpoint preview at (${px}, ${py}) — click to place  |  Escape to cancel`);
+    renderPorts();
+
+  } else if (midState.step === 3) {
+    // Clicking any port in step 3 confirms placement
+    confirmMidpoint();
+  }
+}
+
+function confirmMidpoint() {
+  if (!midState || midState.step !== 3) return;
+  const { px, py } = midState;
+  midState = null;
+  hideMidPreview();
+  document.getElementById('btn-mid').classList.remove('armed');
+  updateActionButtons();
+  addPort(px, py);
+}
+
+function cancelMidMode() {
+  if (!midState) return;
+  midState = null;
+  hideMidPreview();
+  document.getElementById('btn-mid').classList.remove('armed');
+  renderPorts();
+  renderPortList();
+  updateActionButtons();
+  setStatus('Midpoint cancelled.');
+}
+
+// ── midpoint preview overlay ──────────────────────────────────────────────────
+
+function showMidPreview(px, py, ai, bi) {
+  midLayer.innerHTML = '';
+
+  const pa   = ports[ai];
+  const pb   = ports[bi];
+  const sw   = portR * 0.2;
+  const dash = `${portR * 0.9} ${portR * 0.45}`;
+
+  // Dotted lines from each reference to the midpoint
+  const makeLine = (x1, y1, x2, y2) => {
+    const l = document.createElementNS(NS, 'line');
+    l.setAttribute('x1', x1); l.setAttribute('y1', y1);
+    l.setAttribute('x2', x2); l.setAttribute('y2', y2);
+    l.setAttribute('stroke', '#FFD700');
+    l.setAttribute('stroke-width', sw);
+    l.setAttribute('stroke-dasharray', dash);
+    return l;
+  };
+  midLayer.appendChild(makeLine(pa.x, pa.y, px, py));
+  midLayer.appendChild(makeLine(pb.x, pb.y, px, py));
+
+  // Ghost circle at midpoint
+  const c = document.createElementNS(NS, 'circle');
+  c.setAttribute('cx',             px);
+  c.setAttribute('cy',             py);
+  c.setAttribute('r',              portR);
+  c.setAttribute('fill',           portColor(activeType));
+  c.setAttribute('fill-opacity',   '0.45');
+  c.setAttribute('stroke',         '#FFD700');
+  c.setAttribute('stroke-width',   sw);
+  c.setAttribute('stroke-dasharray', dash);
+  midLayer.appendChild(c);
+
+  // Coordinate label
+  const t = document.createElementNS(NS, 'text');
+  t.setAttribute('x',           px + portR + labelSz * 0.3);
+  t.setAttribute('y',           py + labelSz * 0.4);
+  t.setAttribute('font-size',   labelSz);
+  t.setAttribute('fill',        '#FFD700');
+  t.setAttribute('font-family', 'monospace');
+  t.setAttribute('stroke',      'white');
+  t.setAttribute('stroke-width', labelSz * 0.12);
+  t.setAttribute('paint-order', 'stroke');
+  t.textContent = `${activeType === 'in_out' ? 'in/out' : activeType} (${px}, ${py})`;
+  midLayer.appendChild(t);
+
+  midLayer.removeAttribute('display');
+}
+
+function hideMidPreview() {
+  midLayer.innerHTML = '';
+  midLayer.setAttribute('display', 'none');
+}
+
+// Recompute preview when a reference port is moved via field editor
+function refreshMidPreview() {
+  if (!midState || midState.step !== 3) return;
+  const { a, b } = midState;
+  const px = +((ports[a].x + ports[b].x) / 2).toFixed(2);
+  const py = +((ports[a].y + ports[b].y) / 2).toFixed(2);
+  midState.px = px;
+  midState.py = py;
+  showMidPreview(px, py, a, b);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -560,7 +753,7 @@ function toggleMatch(axis) {
 }
 
 function applyMatch(targetIdx) {
-  if (selIdx === null || matchMode === null) return;
+  if (selIdx === null || !matchMode) return;
   if (matchMode === 'Y') ports[selIdx].y = ports[targetIdx].y;
   else                   ports[selIdx].x = ports[targetIdx].x;
   cancelMatch();
@@ -579,24 +772,33 @@ function cancelMatch() {
 // Keyboard shortcuts
 // ─────────────────────────────────────────────────────────────────────────────
 document.addEventListener('keydown', e => {
-  const tag = document.activeElement.tagName.toLowerCase();
-  const inInput = (tag === 'input' || tag === 'textarea');
+  const inInput = ['input', 'textarea'].includes(
+    document.activeElement.tagName.toLowerCase()
+  );
 
   if (e.key === 'Escape') {
-    cancelMatch();
+    if (midState)   { cancelMidMode(); return; }
+    if (matchMode)  { cancelMatch();   return; }
     return;
   }
 
-  if (inInput) return;  // don't intercept typing in fields
+  // Enter confirms midpoint when in step 3
+  if (e.key === 'Enter' && midState && midState.step === 3) {
+    e.preventDefault();
+    confirmMidpoint();
+    return;
+  }
 
-  if (e.key === 'Delete' && selection.size > 0 && !matchMode) {
+  if (inInput) return;
+
+  if (e.key === 'Delete' && selection.size > 0 && !midState && !matchMode) {
     deleteSelected();
     return;
   }
 
-  // Arrow-key nudge for the primary selected port
+  // Arrow-key nudge of primary selected port
   if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)
-      && selIdx !== null) {
+      && selIdx !== null && !midState) {
     e.preventDefault();
     const step = document.getElementById('snap-grid').checked ? gridSz() : 1;
     const p    = ports[selIdx];
@@ -612,10 +814,10 @@ document.addEventListener('keydown', e => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Save JSON
+// Save JSON  (returns true on success, false on failure)
 // ─────────────────────────────────────────────────────────────────────────────
-async function saveJSON() {
-  if (!currentPath || !symbolMeta) return;
+async function saveJSON(silent = false) {
+  if (!currentPath || !symbolMeta) return false;
   symbolMeta.snap_points = ports.map(p => ({
     id: p.id,
     x:  +p.x.toFixed(2),
@@ -627,9 +829,11 @@ async function saveJSON() {
       headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify({ path: currentPath, meta: symbolMeta }),
     });
-    showMsg(res.ok ? { ok: '✓ Saved' } : { err: '✗ ' + await res.text() });
+    if (!silent) showMsg(res.ok ? { ok: '✓ Saved' } : { err: '✗ ' + await res.text() });
+    return res.ok;
   } catch (err) {
-    showMsg({ err: '✗ ' + err.message });
+    if (!silent) showMsg({ err: '✗ ' + err.message });
+    return false;
   }
 }
 
@@ -672,14 +876,14 @@ function showMsg(obj) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Wire up DOM event listeners (no inline handlers in HTML)
+// Wire up event listeners
 // ─────────────────────────────────────────────────────────────────────────────
 document.getElementById('sym-search').addEventListener('input',  filterSymbols);
 document.getElementById('show-grid').addEventListener('change',  toggleGrid);
 document.getElementById('grid-size').addEventListener('change',  updateGridPattern);
 
 document.getElementById('btn-add').addEventListener('click',     addPortCenter);
-document.getElementById('btn-mid').addEventListener('click',     placeMidpoint);
+document.getElementById('btn-mid').addEventListener('click',     startMidpointMode);
 document.getElementById('btn-del').addEventListener('click',     deleteSelected);
 document.getElementById('btn-match-y').addEventListener('click', () => toggleMatch('Y'));
 document.getElementById('btn-match-x').addEventListener('click', () => toggleMatch('X'));
@@ -688,7 +892,8 @@ document.getElementById('f-id').addEventListener('input', applyId);
 document.getElementById('f-x').addEventListener('input',  applyXY);
 document.getElementById('f-y').addEventListener('input',  applyXY);
 
-document.getElementById('btn-save').addEventListener('click',  saveJSON);
+document.getElementById('btn-save').addEventListener('click',  () => saveJSON());
+document.getElementById('btn-next').addEventListener('click',  nextSymbol);
 document.getElementById('btn-debug').addEventListener('click', generateDebug);
 
 // ─────────────────────────────────────────────────────────────────────────────

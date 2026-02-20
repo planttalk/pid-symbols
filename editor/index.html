@@ -19,6 +19,8 @@
 <!-- ── CENTRE: canvas ────────────────────────────────────────────────── -->
 <div id="center">
   <div id="status-bar">No symbol loaded — select one on the left.</div>
+
+  <!-- canvas-wrap is the scrollable viewport; SVG grows inside it on zoom -->
   <div id="canvas-wrap">
     <svg id="editor-svg" xmlns="http://www.w3.org/2000/svg"
          width="480" height="480" viewBox="0 0 80 80"
@@ -28,7 +30,9 @@
           <path d="M 10 0 L 0 0 0 10" fill="none" stroke="#bbb" stroke-width="0.3"/>
         </pattern>
       </defs>
-      <!-- grid background covers large area so it stays visible while panning -->
+      <!-- white symbol background (always visible, regardless of grid toggle) -->
+      <rect id="canvas-bg" fill="white" x="0" y="0" width="100%" height="100%"/>
+      <!-- grid pattern — covers large area so it stays visible while panning -->
       <rect id="grid-bg" x="-5000" y="-5000" width="10000" height="10000"
             fill="url(#grid-pat)" display="none"/>
       <!-- symbol image embedded as data-URI (avoids SVG ID conflicts) -->
@@ -41,15 +45,17 @@
       <line id="guide-v" stroke="#FF8800" stroke-width="0.4"
             stroke-dasharray="2,2" display="none" pointer-events="none"
             x1="0" x2="0" y1="-5000" y2="5000"/>
+      <!-- midpoint preview (lines + ghost circle) -->
+      <g id="mid-layer" display="none" pointer-events="none"></g>
       <!-- draggable port markers -->
       <g id="port-layer"></g>
     </svg>
   </div>
+
   <div id="canvas-hint">
     Double-click to add &nbsp;|&nbsp; Drag to move &nbsp;|&nbsp;
     Right-click to delete &nbsp;|&nbsp; Scroll to zoom &nbsp;|&nbsp;
-    Middle-drag to pan &nbsp;|&nbsp; Ctrl+click to multi-select &nbsp;|&nbsp;
-    Arrow keys to nudge
+    Ctrl+click to multi-select &nbsp;|&nbsp; Arrow keys to nudge
   </div>
 </div>
 
@@ -101,7 +107,7 @@
 
   <div id="port-actions">
     <button class="btn" id="btn-add">+ Add</button>
-    <button class="btn" id="btn-mid" disabled>&#x2295; Midpoint</button>
+    <button class="btn btn-mid" id="btn-mid" disabled>&#x2295; Midpoint</button>
     <button class="btn btn-danger" id="btn-del" disabled>&#x2715; Delete</button>
   </div>
   <div id="match-actions">
@@ -127,6 +133,7 @@
 
   <hr/>
   <button class="btn btn-save" id="btn-save">&#x1F4BE; Save JSON</button>
+  <button class="btn btn-next" id="btn-next" disabled>&#x1F4BE; Save &amp; Next &#x2192;</button>
   <div id="save-msg"></div>
   <button class="btn btn-debug" id="btn-debug">&#x1F50D; Generate _debug.svg</button>
 
