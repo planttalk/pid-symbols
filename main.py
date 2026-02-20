@@ -23,11 +23,15 @@ Classification strategies (applied in order):
 Usage:
     python main.py
     python main.py --dry-run
+    python main.py --augment --augment-count 5
+    python main.py --augment-source processed --augment-count 5
+    python main.py --augment-source completed --augment-count 5
     python main.py --export-completed ./exported
     python main.py --export-completed ./exported --export-source ./processed
 """
 
 import argparse
+import io
 import json
 import re
 import shutil
@@ -288,6 +292,130 @@ def _minify_svg(content: str) -> str:
     for pattern, replacement in _MINIFY_PATTERNS:
         content = pattern.sub(replacement, content)
     return content.strip()
+
+
+def _parse_svg_size(svg_text: str) -> tuple[int, int] | None:
+    """Return (width, height) from SVG width/height or viewBox if available."""
+    try:
+        root = ET.fromstring(svg_text)
+    except ET.ParseError:
+        return None
+
+    def _num(value: str | None) -> float | None:
+        if not value:
+            return None
+        m = re.search(r"[-+]?\d*\.?\d+", value)
+        return float(m.group(0)) if m else None
+
+    width = _num(root.get("width"))
+    height = _num(root.get("height"))
+    if width and height:
+        return int(round(width)), int(round(height))
+
+    view_box = root.get("viewBox")
+    if view_box:
+        parts = view_box.replace(",", " ").split()
+        if len(parts) >= 4:
+            vb_w = _num(parts[2])
+            vb_h = _num(parts[3])
+            if vb_w and vb_h:
+                return int(round(vb_w)), int(round(vb_h))
+    return None
+
+
+def _render_svg_to_png(svg_path: Path) -> bytes:
+    """Render an SVG file to PNG bytes at its intrinsic size."""
+    import cairosvg
+
+    svg_text = svg_path.read_text(encoding="utf-8", errors="replace")
+    size = _parse_svg_size(svg_text)
+    if size:
+        return cairosvg.svg2png(
+            bytestring=svg_text.encode("utf-8"),
+            output_width=size[0],
+            output_height=size[1],
+            background_color="white",
+        )
+    return cairosvg.svg2png(bytestring=svg_text.encode("utf-8"), background_color="white")
+
+
+def _build_augment_transform():
+    """Return the default Albumentations augmentation pipeline."""
+    import albumentations as A
+
+    return A.Compose([
+        A.HorizontalFlip(p=0.5),
+        A.ShiftScaleRotate(shift_limit=0.05, scale_limit=0.1, rotate_limit=15, p=0.5),
+        A.RandomBrightnessContrast(p=0.3),
+        A.GaussNoise(p=0.2),
+    ])
+
+
+def augment_single_svg(
+    svg_path: Path,
+    output_dir: Path,
+    count: int,
+    dry_run: bool,
+    transform,
+) -> tuple[int, int]:
+    """Render a single SVG and write N augmented PNGs to output_dir."""
+    import numpy as np
+    from PIL import Image
+
+    try:
+        png_bytes = _render_svg_to_png(svg_path)
+        base = Image.open(io.BytesIO(png_bytes)).convert("RGB")
+        base_arr = np.array(base)
+    except Exception:
+        return 0, 1
+
+    if not dry_run:
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+    created = 0
+    for i in range(count):
+        try:
+            augmented = transform(image=base_arr)["image"]
+            if not dry_run:
+                out_name = f"{svg_path.stem}_aug{i + 1}.png"
+                Image.fromarray(augmented).save(output_dir / out_name, format="PNG")
+            created += 1
+        except Exception:
+            return created, 1
+
+    return created, 0
+
+
+def augment_svgs(input_dir: Path, output_dir: Path, count: int, dry_run: bool) -> None:
+    """Augment SVGs in input_dir and write PNGs to output_dir (no JSON/registry)."""
+    if not input_dir.is_dir():
+        print(f"Error: input directory not found: {input_dir}")
+        return
+
+    svg_files = [p for p in sorted(input_dir.rglob("*.svg")) if "_debug" not in p.stem]
+    total = len(svg_files)
+    transform = _build_augment_transform()
+
+    created = 0
+    errors = 0
+
+    for idx, svg_path in enumerate(svg_files, 1):
+        rel = svg_path.relative_to(input_dir)
+        target_dir = output_dir / rel.parent
+        made, err = augment_single_svg(svg_path, target_dir, count, dry_run, transform)
+        created += made
+        errors += err
+        print(f"  [{idx:>4}/{total}] {rel}")
+
+    print(f"\n{'='*60}")
+    print(f"  Inputs   : {total}")
+    print(f"  PNGs     : {created if not dry_run else 0}")
+    print(f"  Errors   : {errors}")
+    if dry_run:
+        print("  [DRY RUN -- no files written]")
+    else:
+        print(f"  Output   : {output_dir}")
+    print(f"{'='*60}")
 
 
 def parse_svg_attributes(svg_path: Path) -> dict:
@@ -1073,7 +1201,22 @@ def main() -> None:
     )
     parser.add_argument(
         "--output", default=None, metavar="DIR",
-        help="Output directory for processed files (default: <repo>/processed)."
+        help=(
+            "Output directory for processed files "
+            "(default: <repo>/processed, or <input>-augmented when using --input/--augment-source/--augment)."
+        )
+    )
+    parser.add_argument(
+        "--augment", action="store_true",
+        help="Generate augmented PNGs instead of processed SVG/JSON."
+    )
+    parser.add_argument(
+        "--augment-count", type=int, default=5, metavar="N",
+        help="Number of augmented PNGs to generate per SVG (default: 5)."
+    )
+    parser.add_argument(
+        "--augment-source", choices=["completed", "processed"], default=None,
+        help="Use completed/ or processed/ as the input source."
     )
     parser.add_argument(
         "--export-completed", default=None, metavar="DIR",
@@ -1089,14 +1232,27 @@ def main() -> None:
     global INPUT_DIR, PROCESSED_DIR
     if args.input:
         INPUT_DIR = Path(args.input).resolve()
+    if args.augment_source and not args.input:
+        INPUT_DIR = (REPO_ROOT / args.augment_source).resolve()
     if args.output:
         PROCESSED_DIR = Path(args.output).resolve()
+    elif args.input or args.augment_source or args.augment:
+        # Default to <input>-augmented alongside the chosen input folder.
+        PROCESSED_DIR = INPUT_DIR.parent / f"{INPUT_DIR.name}-augmented"
 
     if args.export_completed:
         export_dir = Path(args.export_completed).resolve()
         source_dir = (Path(args.export_source).resolve()
                       if args.export_source else PROCESSED_DIR)
         export_completed_symbols(source_dir, export_dir, args.dry_run)
+        return
+
+    augment_mode = bool(args.augment or args.augment_source)
+    if augment_mode:
+        if args.augment_count < 1:
+            print("Error: --augment-count must be >= 1")
+            return
+        augment_svgs(INPUT_DIR, PROCESSED_DIR, args.augment_count, args.dry_run)
         return
 
     generated_at = datetime.now(timezone.utc).isoformat()
@@ -1114,6 +1270,8 @@ def main() -> None:
     used_stems: dict[Path, set[str]] = {}
 
     for svg_path in svg_files:
+        if "_debug" in svg_path.stem:
+            continue
         rel = svg_path.relative_to(REPO_ROOT)
         try:
             classification = classify(svg_path)
