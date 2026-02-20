@@ -27,17 +27,18 @@ REPO_ROOT     = Path(__file__).resolve().parent.parent
 PROCESSED_DIR = REPO_ROOT / "processed"
 
 _PORT_COLORS: dict[str, str] = {
-    "in":      "#2196F3",  # blue
-    "out":     "#F44336",  # red
-    "in_out":  "#009688",  # teal  (bidirectional)
-    "signal":  "#9C27B0",  # purple
-    "process": "#FF9800",  # orange
-    "north":   "#4CAF50",  # green
-    "south":   "#4CAF50",
-    "east":    "#4CAF50",
-    "west":    "#4CAF50",
+    "in":        "#2196F3",  # blue
+    "out":       "#F44336",  # red
+    "in_out":    "#009688",  # teal  (bidirectional)
+    "signal":    "#9C27B0",  # purple
+    "process":   "#FF9800",  # orange
+    "north":     "#4CAF50",  # green
+    "south":     "#4CAF50",
+    "east":      "#4CAF50",
+    "west":      "#4CAF50",
+    "reference": "#9E9E9E",  # grey — spatial reference, no connection meaning
 }
-_DEFAULT_COLOR = "#607D8B"  # slate-grey for p1, p2, …
+_DEFAULT_COLOR = "#607D8B"  # slate-grey for custom / unknown
 
 
 def _overlay_svg(svg_text: str, snap_points: list[dict]) -> str:
@@ -69,9 +70,10 @@ def _overlay_svg(svg_text: str, snap_points: list[dict]) -> str:
     ]
     for pt in snap_points:
         pid   = str(pt.get("id", "?"))
+        ptype = str(pt.get("type", pid))   # fall back to id for old single-field format
         x, y  = pt["x"], pt["y"]
-        color = _PORT_COLORS.get(pid, _DEFAULT_COLOR)
-        disp  = "in/out" if pid == "in_out" else pid
+        color = _PORT_COLORS.get(ptype, _DEFAULT_COLOR)
+        disp  = pid                        # label shows the name
         lines.append(
             f'  <circle cx="{x}" cy="{y}" r="{radius}"'
             f' fill="{color}" fill-opacity="0.8"'

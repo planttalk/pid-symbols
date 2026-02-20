@@ -30,17 +30,22 @@ EDITOR_DIR = pathlib.Path(__file__).parent / "editor"
 
 # ── port colour map (shared by _generate_debug) ───────────────────────────────
 _PORT_COLORS: dict[str, str] = {
-    "in":      "#2196F3",
-    "out":     "#F44336",
-    "in_out":  "#009688",
-    "signal":  "#9C27B0",
-    "process": "#FF9800",
-    "north":   "#4CAF50",
-    "south":   "#4CAF50",
-    "east":    "#4CAF50",
-    "west":    "#4CAF50",
+    "in":        "#2196F3",
+    "out":       "#F44336",
+    "in_out":    "#009688",
+    "signal":    "#9C27B0",
+    "process":   "#FF9800",
+    "north":     "#4CAF50",
+    "south":     "#4CAF50",
+    "east":      "#4CAF50",
+    "west":      "#4CAF50",
+    "reference": "#9E9E9E",  # spatial-only — no connection meaning
 }
 _DEFAULT_COLOR = "#607D8B"
+
+# Cache for symbol list — avoids re-reading every JSON on each /api/symbols request.
+# Invalidated whenever _save_symbol() writes to disk.
+_symbols_cache: list | None = None
 
 
 def _port_color(pid: str) -> str:
@@ -151,15 +156,24 @@ def _safe_path(rel: str) -> pathlib.Path | None:
 
 
 def _list_symbols() -> list[dict]:
-    """Return symbol descriptors, using registry.json when available."""
+    """Return symbol descriptors, using registry.json when available.
+
+    Results are cached in _symbols_cache for the lifetime of the server process
+    and invalidated whenever _save_symbol() writes to disk.
+    """
+    global _symbols_cache
+    if _symbols_cache is not None:
+        return _symbols_cache
     reg_path = SYMBOLS_ROOT / "registry.json"
     if reg_path.exists():
         try:
             registry = json.loads(reg_path.read_text(encoding="utf-8"))
-            return _symbols_from_registry(registry)
+            _symbols_cache = _symbols_from_registry(registry)
+            return _symbols_cache
         except (json.JSONDecodeError, OSError):
             pass
-    return _symbols_from_scan()
+    _symbols_cache = _symbols_from_scan()
+    return _symbols_cache
 
 
 def _symbols_from_registry(registry: dict) -> list[dict]:
@@ -173,11 +187,18 @@ def _symbols_from_registry(registry: dict) -> list[dict]:
         if not json_path.exists():
             continue
         parts = sym_id.split("/")
+        completed = False
+        try:
+            sym_data  = json.loads(json_path.read_text(encoding="utf-8"))
+            completed = bool(sym_data.get("completed", False))
+        except (json.JSONDecodeError, OSError):
+            pass
         results.append({
-            "path":     sym_id,
-            "name":     sym.get("display_name") or (parts[-1] if parts else sym_id),
-            "standard": sym.get("standard", parts[0] if parts else "").lower(),
-            "category": sym.get("category", parts[1] if len(parts) > 1 else ""),
+            "path":      sym_id,
+            "name":      sym.get("display_name") or (parts[-1] if parts else sym_id),
+            "standard":  sym.get("standard", parts[0] if parts else "").lower(),
+            "category":  sym.get("category", parts[1] if len(parts) > 1 else ""),
+            "completed": completed,
         })
     return results
 
@@ -191,11 +212,18 @@ def _symbols_from_scan() -> list[dict]:
             continue
         rel   = json_path.relative_to(SYMBOLS_ROOT)
         parts = rel.parts
+        completed = False
+        try:
+            sym_data  = json.loads(json_path.read_text(encoding="utf-8"))
+            completed = bool(sym_data.get("completed", False))
+        except (json.JSONDecodeError, OSError):
+            pass
         results.append({
-            "path":     "/".join(rel.with_suffix("").parts),
-            "name":     stem,
-            "standard": parts[0] if len(parts) >= 1 else "",
-            "category": parts[1] if len(parts) >= 2 else "",
+            "path":      "/".join(rel.with_suffix("").parts),
+            "name":      stem,
+            "standard":  parts[0] if len(parts) >= 1 else "",
+            "category":  parts[1] if len(parts) >= 2 else "",
+            "completed": completed,
         })
     return results
 
@@ -216,6 +244,7 @@ def _load_symbol(rel: str) -> dict | None:
 
 def _save_symbol(rel: str | None, meta: dict | None) -> tuple[bool, str]:
     """Write updated metadata JSON back to disk."""
+    global _symbols_cache
     if not rel or meta is None:
         return False, "missing path or meta"
     base = _safe_path(rel)
@@ -231,6 +260,8 @@ def _save_symbol(rel: str | None, meta: dict | None) -> tuple[bool, str]:
         )
     except OSError as exc:
         return False, str(exc)
+    # Invalidate symbol list cache so 'completed' status is refreshed next time
+    _symbols_cache = None
     return True, ""
 
 
@@ -259,10 +290,11 @@ def _generate_debug(rel: str | None, ports: list[dict]) -> tuple[bool, str]:
 
     parts: list[str] = ['<g id="port-debug" style="pointer-events:none;">']
     for p in ports:
-        pid  = str(p.get("id", "?"))
-        x, y = p.get("x", 0), p.get("y", 0)
-        col  = _port_color(pid)
-        disp = "in/out" if pid == "in_out" else pid
+        pid   = str(p.get("id", "?"))
+        ptype = str(p.get("type", pid))  # fall back to id for old single-field format
+        x, y  = p.get("x", 0), p.get("y", 0)
+        col   = _port_color(ptype)
+        disp  = pid                       # label shows the name, not the type
         parts.append(
             f'  <circle cx="{x}" cy="{y}" r="{r}" fill="{col}"'
             f' stroke="white" stroke-width="{sw}" opacity="0.9"/>'

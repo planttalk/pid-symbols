@@ -4,17 +4,21 @@
 // Port type definitions
 // ─────────────────────────────────────────────────────────────────────────────
 const PORT_TYPES = [
-  { id: 'in',      label: 'In',      color: '#2196F3' },
-  { id: 'out',     label: 'Out',     color: '#F44336' },
-  { id: 'in_out',  label: 'In/Out',  color: '#009688' },
-  { id: 'signal',  label: 'Signal',  color: '#9C27B0' },
-  { id: 'process', label: 'Process', color: '#FF9800' },
-  { id: 'north',   label: 'North',   color: '#4CAF50' },
-  { id: 'south',   label: 'South',   color: '#4CAF50' },
-  { id: 'east',    label: 'East',    color: '#4CAF50' },
-  { id: 'west',    label: 'West',    color: '#4CAF50' },
-  { id: 'custom',  label: 'Custom',  color: '#607D8B' },
+  { id: 'in',        label: 'In',        color: '#2196F3' },
+  { id: 'out',       label: 'Out',       color: '#F44336' },
+  { id: 'in_out',    label: 'In/Out',    color: '#009688' },
+  { id: 'signal',    label: 'Signal',    color: '#9C27B0' },
+  { id: 'process',   label: 'Process',   color: '#FF9800' },
+  { id: 'north',     label: 'North',     color: '#4CAF50' },
+  { id: 'south',     label: 'South',     color: '#4CAF50' },
+  { id: 'east',      label: 'East',      color: '#4CAF50' },
+  { id: 'west',      label: 'West',      color: '#4CAF50' },
+  { id: 'reference', label: 'Ref.',      color: '#9E9E9E' },  // spatial only — no connection
+  { id: 'custom',    label: 'Custom',    color: '#607D8B' },
 ];
+
+// Set of all known type ids (used for migration of old single-field snap_points)
+const KNOWN_TYPES = new Set(PORT_TYPES.map(t => t.id));
 
 const TYPE_COLOR = Object.fromEntries(PORT_TYPES.map(t => [t.id, t.color]));
 
@@ -81,11 +85,18 @@ function buildTypeGrid() {
   }
 }
 
-function setActiveType(id) {
+// updatePort: when true and exactly 1 port is selected, also change that port's type.
+// Pass false when calling from populateFields() to just sync the UI without side effects.
+function setActiveType(id, updatePort = true) {
   activeType = id;
   document.querySelectorAll('.type-btn').forEach(btn =>
     btn.classList.toggle('active', btn.dataset.typeId === id)
   );
+  if (updatePort && selIdx !== null && selection.size === 1 && !ports[selIdx].locked) {
+    ports[selIdx].type = id;
+    renderPorts();
+    renderPortList();
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -199,9 +210,18 @@ function renderSymbolList(list) {
       lastGrp = grp;
     }
     const d = document.createElement('div');
-    d.className   = 'sym-item' + (s.path === currentPath ? ' active' : '');
-    d.textContent = s.name;
-    d.title       = s.path;
+    d.className = 'sym-item' +
+      (s.path === currentPath ? ' active' : '') +
+      (s.completed ? ' completed' : '');
+    if (s.completed) {
+      const check = document.createElement('span');
+      check.className   = 'sym-check';
+      check.textContent = '✓';
+      d.appendChild(check);
+    }
+    const nameSpan = document.createTextNode(s.name);
+    d.appendChild(nameSpan);
+    d.title = s.path;
     d.addEventListener('click', () => loadSymbol(s.path));
     el.appendChild(d);
   }
@@ -228,7 +248,15 @@ async function loadSymbol(relPath) {
   const data = await res.json();
 
   symbolMeta = data.meta;
-  ports      = JSON.parse(JSON.stringify(data.meta.snap_points || []));
+  ports = JSON.parse(JSON.stringify(data.meta.snap_points || []));
+  ports.forEach(p => {
+    p.locked = !!p.locked;
+    // Migrate old single-field format: {id:"in"} → {id:"in", type:"in"}
+    // Descriptive names that aren't known types become "reference".
+    if (!p.type) {
+      p.type = KNOWN_TYPES.has(p.id) ? p.id : 'reference';
+    }
+  });
 
   // Parse viewBox dimensions
   const vbMatch = data.svg.match(/viewBox=["']([^"']+)["']/);
@@ -277,6 +305,12 @@ async function loadSymbol(relPath) {
   scrollSymListToActive();
 
   document.getElementById('btn-next').disabled = false;
+
+  const btnComplete = document.getElementById('btn-complete');
+  btnComplete.disabled = false;
+  const isComplete = !!symbolMeta.completed;
+  btnComplete.classList.toggle('is-complete', isComplete);
+  btnComplete.textContent = isComplete ? '✓ Completed' : '✓ Mark Complete';
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -304,7 +338,7 @@ function renderPorts() {
     document.querySelector('input[name=marker]:checked')?.value ?? 'crosshair';
 
   ports.forEach((p, i) => {
-    const col   = portColor(p.id);
+    const col   = portColor(p.type);
     const isSel = selection.has(i);
 
     // Selection halo
@@ -341,16 +375,16 @@ function renderPorts() {
     c.setAttribute('cy',           p.y);
     c.setAttribute('r',            portR);
     c.setAttribute('fill',         col);
-    c.setAttribute('fill-opacity', '0.55');
+    c.setAttribute('fill-opacity', p.locked ? '0.38' : '0.55');
     c.setAttribute('stroke',       'white');
     c.setAttribute('stroke-width', portR * 0.15);
-    // In midpoint mode show crosshair to signal "clickable target"
-    c.style.cursor = midState ? 'crosshair' : 'grab';
+    if (p.locked) c.setAttribute('stroke-dasharray', `${portR * 0.55} ${portR * 0.28}`);
+    c.style.cursor = p.locked ? 'not-allowed' : (midState ? 'crosshair' : 'grab');
     c.addEventListener('mousedown',   ev => onPortDown(ev, i));
     c.addEventListener('contextmenu', ev => { ev.preventDefault(); ctxDelete(i); });
 
     const title = document.createElementNS(NS, 'title');
-    title.textContent = `${p.id}  (${p.x.toFixed(2)}, ${p.y.toFixed(2)})`;
+    title.textContent = `${p.id} [${p.type}]  (${p.x.toFixed(2)}, ${p.y.toFixed(2)})`;
     c.appendChild(title);
     portLayer.appendChild(c);
 
@@ -380,8 +414,8 @@ function renderPorts() {
     }
     // markerStyle === 'none' → no centre indicator added
 
-    // Label
-    const label = p.id === 'in_out' ? 'in/out' : p.id;
+    // Label — shows the port name (id), not the type
+    const label = p.id;
     const t = document.createElementNS(NS, 'text');
     t.setAttribute('x',              p.x + portR + labelSz * 0.25);
     t.setAttribute('y',              p.y + labelSz * 0.38);
@@ -405,12 +439,24 @@ function renderPortList() {
   el.innerHTML = '';
   ports.forEach((p, i) => {
     const row = document.createElement('div');
-    row.className = 'port-row' + (selection.has(i) ? ' sel' : '');
-    const label = p.id === 'in_out' ? 'in/out' : p.id;
+    row.className = 'port-row' + (selection.has(i) ? ' sel' : '') + (p.locked ? ' locked' : '');
     row.innerHTML =
-      `<span class="port-dot" style="background:${portColor(p.id)}"></span>` +
-      `<span class="port-name">${label}</span>` +
+      `<span class="port-dot" style="background:${portColor(p.type)}"></span>` +
+      `<span class="port-name">${p.id}</span>` +
       `<span class="port-xy">${p.x.toFixed(1)}, ${p.y.toFixed(1)}</span>`;
+    // Lock toggle — stopPropagation so it doesn't also trigger row selection
+    const lockBtn = document.createElement('button');
+    lockBtn.className = 'port-lock-btn' + (p.locked ? ' is-locked' : '');
+    lockBtn.title     = p.locked ? 'Unlock port' : 'Lock port';
+    lockBtn.textContent = p.locked ? '🔒' : '🔓';
+    lockBtn.addEventListener('click', ev => {
+      ev.stopPropagation();
+      ports[i].locked = !ports[i].locked;
+      renderPorts();
+      renderPortList();
+      if (selIdx === i) populateFields(i);
+    });
+    row.appendChild(lockBtn);
     row.addEventListener('click', ev => onPortRowClick(ev, i));
     el.appendChild(row);
   });
@@ -476,14 +522,22 @@ function ctxDelete(idx) {
 // ─────────────────────────────────────────────────────────────────────────────
 function populateFields(idx) {
   const p = ports[idx];
-  document.getElementById('f-id').value = p.id;
-  document.getElementById('f-x').value  = p.x;
-  document.getElementById('f-y').value  = p.y;
-  if (TYPE_COLOR[p.id]) setActiveType(p.id);
+  document.getElementById('f-id').value    = p.id;
+  document.getElementById('f-x').value     = p.x;
+  document.getElementById('f-y').value     = p.y;
+  // Disable position fields for locked ports (ID rename is still allowed)
+  document.getElementById('f-x').disabled  = p.locked;
+  document.getElementById('f-y').disabled  = p.locked;
+  // Sync type grid to this port's type — don't trigger a port update (updatePort=false)
+  setActiveType(p.type, false);
 }
 
 function clearFields() {
-  ['f-id', 'f-x', 'f-y'].forEach(id => { document.getElementById(id).value = ''; });
+  ['f-id', 'f-x', 'f-y'].forEach(id => {
+    const el = document.getElementById(id);
+    el.value    = '';
+    el.disabled = false;
+  });
 }
 
 function applyId() {
@@ -496,7 +550,7 @@ function applyId() {
 }
 
 function applyXY() {
-  if (selIdx === null) return;
+  if (selIdx === null || ports[selIdx].locked) return;
   const x = parseFloat(document.getElementById('f-x').value);
   const y = parseFloat(document.getElementById('f-y').value);
   if (!isNaN(x)) ports[selIdx].x = +x.toFixed(2);
@@ -534,7 +588,7 @@ function onPortDown(e, idx) {
   }
 
   selectPort(idx);
-  drag = { idx };
+  if (!ports[idx].locked) drag = { idx };  // locked ports: select only, no drag
 }
 
 document.addEventListener('mousemove', e => {
@@ -607,8 +661,9 @@ svg.addEventListener('click', e => {
 // ─────────────────────────────────────────────────────────────────────────────
 // Add / Delete ports
 // ─────────────────────────────────────────────────────────────────────────────
-function addPort(x, y, id = null) {
-  ports.push({ id: id ?? activeType, x, y });
+function addPort(x, y, id = null, type = null) {
+  const t = type ?? activeType;
+  ports.push({ id: id ?? t, type: t, x, y, locked: false });
   const idx = ports.length - 1;
   selection = new Set([idx]);
   selIdx    = idx;
@@ -772,7 +827,7 @@ function showMidPreview(px, py, ai, bi) {
   t.setAttribute('stroke',      'white');
   t.setAttribute('stroke-width', labelSz * 0.12);
   t.setAttribute('paint-order', 'stroke');
-  t.textContent = `${activeType === 'in_out' ? 'in/out' : activeType} (${px}, ${py})`;
+  t.textContent = `${activeType} (${px}, ${py})`;
   midLayer.appendChild(t);
 
   midLayer.removeAttribute('display');
@@ -807,7 +862,7 @@ function toggleMatch(axis) {
 }
 
 function applyMatch(targetIdx) {
-  if (selIdx === null || !matchMode) return;
+  if (selIdx === null || !matchMode || ports[selIdx].locked) return;
   if (matchMode === 'Y') ports[selIdx].y = ports[targetIdx].y;
   else                   ports[selIdx].x = ports[targetIdx].x;
   cancelMatch();
@@ -850,9 +905,9 @@ document.addEventListener('keydown', e => {
     return;
   }
 
-  // Arrow-key nudge of primary selected port
+  // Arrow-key nudge of primary selected port (skipped when locked)
   if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)
-      && selIdx !== null && !midState) {
+      && selIdx !== null && !midState && !ports[selIdx].locked) {
     e.preventDefault();
     const step = document.getElementById('snap-grid').checked ? gridSz() : 1;
     const p    = ports[selIdx];
@@ -868,15 +923,51 @@ document.addEventListener('keydown', e => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Toggle completion status
+// ─────────────────────────────────────────────────────────────────────────────
+async function toggleComplete() {
+  if (!currentPath || !symbolMeta) return;
+  const newState = !symbolMeta.completed;
+  symbolMeta.completed = newState;
+
+  // Update button immediately
+  const btn = document.getElementById('btn-complete');
+  btn.classList.toggle('is-complete', newState);
+  btn.textContent = newState ? '✓ Completed' : '✓ Mark Complete';
+
+  // Update local cache so the list reflects the change without a reload
+  const sym = allSymbols.find(s => s.path === currentPath);
+  if (sym) sym.completed = newState;
+  renderSymbolList(visibleSymbols.map(s =>
+    s.path === currentPath ? { ...s, completed: newState } : s
+  ));
+
+  const saved = await saveJSON(/*silent=*/true);
+  if (!saved) {
+    // Revert on failure
+    symbolMeta.completed = !newState;
+    btn.classList.toggle('is-complete', !newState);
+    btn.textContent = !newState ? '✓ Completed' : '✓ Mark Complete';
+    if (sym) sym.completed = !newState;
+    renderSymbolList(visibleSymbols.map(s =>
+      s.path === currentPath ? { ...s, completed: !newState } : s
+    ));
+    showMsg({ err: '✗ Save failed' });
+  } else {
+    showMsg({ ok: newState ? '✓ Marked complete' : '✓ Marked incomplete' });
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Save JSON  (returns true on success, false on failure)
 // ─────────────────────────────────────────────────────────────────────────────
 async function saveJSON(silent = false) {
   if (!currentPath || !symbolMeta) return false;
-  symbolMeta.snap_points = ports.map(p => ({
-    id: p.id,
-    x:  +p.x.toFixed(2),
-    y:  +p.y.toFixed(2),
-  }));
+  symbolMeta.snap_points = ports.map(p => {
+    const sp = { id: p.id, type: p.type, x: +p.x.toFixed(2), y: +p.y.toFixed(2) };
+    if (p.locked) sp.locked = true;
+    return sp;
+  });
   try {
     const res = await fetch('/api/save', {
       method:  'POST',
@@ -952,9 +1043,10 @@ document.getElementById('f-id').addEventListener('input', applyId);
 document.getElementById('f-x').addEventListener('input',  applyXY);
 document.getElementById('f-y').addEventListener('input',  applyXY);
 
-document.getElementById('btn-save').addEventListener('click',  () => saveJSON());
-document.getElementById('btn-next').addEventListener('click',  nextSymbol);
-document.getElementById('btn-debug').addEventListener('click', generateDebug);
+document.getElementById('btn-save').addEventListener('click',     () => saveJSON());
+document.getElementById('btn-next').addEventListener('click',     nextSymbol);
+document.getElementById('btn-complete').addEventListener('click', toggleComplete);
+document.getElementById('btn-debug').addEventListener('click',    generateDebug);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Boot
