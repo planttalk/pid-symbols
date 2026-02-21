@@ -19,7 +19,7 @@ Usage:
     python main.py --export-completed ./exported --export-source ./processed
     python main.py --migrate --dry-run
     python main.py --migrate
-    python main.py --export-yolo ./yolo-out --augment-count 3
+    python main.py --export-yolo ./yolo-out --augment-count 3 --compose-count 20
     python main.py --dedup-input --dry-run
     python main.py --dedup-input
     python main.py --migrate-legacy-completed --dry-run
@@ -44,6 +44,25 @@ from src.export import (
 from src.metadata import build_metadata, processed_dir_for, resolve_stem
 from src.svg_utils import _minify_svg
 from src.utils import _metadata_quality, _slugify, _svg_sha256
+
+
+def _prompt_choice(label: str, options: list[str]) -> str | None:
+    """Print a numbered menu and return the chosen value, or None for 'All'."""
+    print(f"\n{label}:")
+    print("  [0] All")
+    for i, opt in enumerate(options, 1):
+        print(f"  [{i}] {opt}")
+    while True:
+        raw = input("  > ").strip()
+        if raw in ("0", ""):
+            return None
+        try:
+            idx = int(raw)
+            if 1 <= idx <= len(options):
+                return options[idx - 1]
+        except ValueError:
+            pass
+        print(f"  Please enter a number between 0 and {len(options)}.")
 
 
 def main() -> None:
@@ -95,7 +114,11 @@ def main() -> None:
     )
     parser.add_argument(
         "--export-yolo", default=None, metavar="DIR",
-        help="Export YOLO v8 datasets (one per standard) to DIR."
+        help="Export YOLO datasets (one per standard) to DIR."
+    )
+    parser.add_argument(
+        "--compose-count", type=int, default=20, metavar="N",
+        help="Multi-symbol composite images per standard group (default: 20). 0 disables.",
     )
     parser.add_argument(
         "--dedup-input", action="store_true",
@@ -141,11 +164,33 @@ def main() -> None:
         return
 
     if args.export_yolo:
-        yolo_out = Path(args.export_yolo).resolve()
+        yolo_out      = Path(args.export_yolo).resolve()
         registry_path = paths.PROCESSED_DIR / "registry.json"
+
+        # Prompt user to narrow down origin and standard
+        sel_origin   = None
+        sel_standard = None
+        try:
+            reg      = json.loads(registry_path.read_text(encoding="utf-8"))
+            syms     = reg.get("symbols", [])
+            origins  = sorted({s.get("id", "").split("/")[0]
+                                for s in syms if s.get("id", "").count("/") >= 3})
+            stds     = sorted({s.get("standard", "")
+                                for s in syms
+                                if s.get("standard", "").lower() not in ("", "unknown")})
+            sel_origin   = _prompt_choice("Select origin", origins)
+            sel_standard = _prompt_choice("Select standard", stds)
+        except (json.JSONDecodeError, OSError):
+            print("Warning: could not load registry for filtering — exporting all.")
+        except KeyboardInterrupt:
+            print("\nAborted.")
+            return
+
         export_yolo_datasets(
             registry_path, yolo_out,
             args.augment_count, args.dry_run, args.augment_min_size,
+            origin=sel_origin, standard=sel_standard,
+            compose_count=args.compose_count,
         )
         return
 
