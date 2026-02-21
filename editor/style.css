@@ -389,6 +389,22 @@ input[type=text] {
 
 .btn-debug { width: 100%; margin-top: 4px; }
 
+.btn-export {
+  width: 100%;
+  margin-top: 4px;
+  background: #2a1a4a;
+  border-color: #9944ee;
+  color: #cc88ff;
+}
+.btn-export:hover { background: #3a2a5a; }
+
+#export-msg {
+  font-size: 11px;
+  min-height: 16px;
+  margin-top: 4px;
+  word-break: break-all;
+}
+
 .btn-danger { background: #5c1a1a; border-color: #e04040; color: #f48771; }
 .btn-danger:hover { background: #7c2020; }
 

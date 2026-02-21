@@ -141,6 +141,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
             if ok: self._send("ok")
             else:  self._error(msg, 500)
 
+        elif p == "/api/export-completed":
+            out = body.get("output_dir", "").strip()
+            result = _export_completed(out)
+            self._json(result)
+
         else:
             self._error("Not found", 404)
 
@@ -387,6 +392,61 @@ def _generate_debug(rel: str | None, ports: list[dict]) -> tuple[bool, str]:
     except OSError as exc:
         return False, str(exc)
     return True, ""
+
+
+def _export_completed(output_dir_str: str) -> dict:
+    """Copy every completed symbol (SVG + JSON) from SYMBOLS_ROOT to output_dir.
+
+    Returns a dict with keys: output_dir, copied, skipped, errors, message.
+    """
+    import shutil
+
+    if output_dir_str:
+        output_dir = pathlib.Path(output_dir_str)
+    else:
+        # Default: sibling of SYMBOLS_ROOT named "completed"
+        output_dir = SYMBOLS_ROOT.parent / "completed"
+
+    copied = 0
+    skipped = 0
+    errors = 0
+
+    for json_path in sorted(SYMBOLS_ROOT.rglob("*.json")):
+        if json_path.name == "registry.json" or "_debug" in json_path.stem:
+            continue
+        try:
+            meta = json.loads(json_path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            errors += 1
+            continue
+
+        if not meta.get("completed", False):
+            skipped += 1
+            continue
+
+        svg_path = json_path.with_suffix(".svg")
+        if not svg_path.exists():
+            errors += 1
+            continue
+
+        rel = json_path.relative_to(SYMBOLS_ROOT)
+        dest_json = output_dir / rel
+        dest_svg  = dest_json.with_suffix(".svg")
+        try:
+            dest_json.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(json_path, dest_json)
+            shutil.copy2(svg_path,  dest_svg)
+            copied += 1
+        except OSError as exc:
+            errors += 1
+
+    return {
+        "output_dir": str(output_dir),
+        "copied":     copied,
+        "skipped":    skipped,
+        "errors":     errors,
+        "message":    f"Exported {copied} symbol{'s' if copied != 1 else ''} to {output_dir}",
+    }
 
 
 # ── entry point ────────────────────────────────────────────────────────────────

@@ -1282,6 +1282,40 @@ async function saveJSON(silent = false) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Export completed symbols
+// ─────────────────────────────────────────────────────────────────────────────
+async function exportCompleted() {
+  const btn     = document.getElementById('btn-export');
+  const msgEl   = document.getElementById('export-msg');
+  const dirVal  = document.getElementById('export-dir').value.trim();
+
+  btn.disabled   = true;
+  msgEl.className = '';
+  msgEl.textContent = 'Exporting…';
+
+  try {
+    const res  = await fetch('/api/export-completed', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ output_dir: dirVal }),
+    });
+    const data = await res.json();
+    if (data.errors > 0) {
+      msgEl.className   = 'err';
+      msgEl.textContent = `✗ ${data.copied} copied, ${data.errors} error(s) → ${data.output_dir}`;
+    } else {
+      msgEl.className   = 'ok';
+      msgEl.textContent = `✓ ${data.message}`;
+    }
+  } catch (err) {
+    msgEl.className   = 'err';
+    msgEl.textContent = '✗ ' + err.message;
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Generate _debug.svg
 // ─────────────────────────────────────────────────────────────────────────────
 async function generateDebug() {
@@ -1354,6 +1388,7 @@ document.getElementById('btn-save').addEventListener('click',     () => saveJSON
 document.getElementById('btn-next').addEventListener('click',     nextSymbol);
 document.getElementById('btn-complete').addEventListener('click', toggleComplete);
 document.getElementById('btn-debug').addEventListener('click',    generateDebug);
+document.getElementById('btn-export').addEventListener('click',   exportCompleted);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Boot
