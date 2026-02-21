@@ -9,7 +9,7 @@ import hashlib
 import re
 from pathlib import Path
 
-from constants import _STANDARD_RE
+from .constants import _STANDARD_RE
 
 
 def _extract_standard_from_name(stem: str) -> str | None:

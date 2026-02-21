@@ -11,10 +11,10 @@ import shutil
 from datetime import datetime, timezone
 from pathlib import Path
 
-import paths
-from constants import PIP_CATEGORIES, SCHEMA_VERSION
-from metadata import processed_dir_for, resolve_stem
-from utils import (
+from . import paths
+from .constants import PIP_CATEGORIES, SCHEMA_VERSION
+from .metadata import processed_dir_for, resolve_stem
+from .utils import (
     _metadata_quality,
     _rel_or_abs,
     _safe_std_slug,

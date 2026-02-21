@@ -16,7 +16,7 @@ import re
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
-from constants import _VALVE_CATS, _OPEN_END_CATS, _BUBBLE_CATS, _ACTUATOR_CATS
+from .constants import _VALVE_CATS, _OPEN_END_CATS, _BUBBLE_CATS, _ACTUATOR_CATS
 
 
 def _path_open_endpoints(d: str) -> list[tuple[float, float]]:

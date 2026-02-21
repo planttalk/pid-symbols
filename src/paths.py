@@ -13,6 +13,6 @@ Usage in other modules:
 
 from pathlib import Path
 
-REPO_ROOT     = Path(__file__).resolve().parent   # repo root = same dir as paths.py
+REPO_ROOT     = Path(__file__).resolve().parent.parent   # src/../ = repo root
 INPUT_DIR     = REPO_ROOT / "input"
 PROCESSED_DIR = REPO_ROOT / "processed"

@@ -27,14 +27,14 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 
-import paths
-from augmentation import augment_svgs, export_yolo_datasets
-from classifier import classify
-from constants import SCHEMA_VERSION
-from export import export_completed_symbols, migrate_to_source_hierarchy
-from metadata import build_metadata, processed_dir_for, resolve_stem
-from svg_utils import _minify_svg
-from utils import _metadata_quality, _slugify, _svg_sha256
+import src.paths as paths
+from src.augmentation import augment_svgs, export_yolo_datasets
+from src.classifier import classify
+from src.constants import SCHEMA_VERSION
+from src.export import export_completed_symbols, migrate_to_source_hierarchy
+from src.metadata import build_metadata, processed_dir_for, resolve_stem
+from src.svg_utils import _minify_svg
+from src.utils import _metadata_quality, _slugify, _svg_sha256
 
 
 def main() -> None:
@@ -159,7 +159,7 @@ def main() -> None:
             if target_dir not in used_stems:
                 used_stems[target_dir] = set()
 
-            from metadata import _normalize_stem
+            from src.metadata import _normalize_stem
             base_stem  = _normalize_stem(svg_path.stem, classification["standard"])
             final_stem = resolve_stem(base_stem, target_dir, used_stems[target_dir])
             meta       = build_metadata(svg_path, final_stem, classification, src_rel)

@@ -9,7 +9,7 @@ import re
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
-from constants import _MINIFY_PATTERNS
+from .constants import _MINIFY_PATTERNS
 
 
 def _minify_svg(content: str) -> str:

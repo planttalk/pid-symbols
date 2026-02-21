@@ -15,8 +15,8 @@ Strategies applied in order by classify():
 
 from pathlib import Path
 
-import paths
-from constants import (
+from . import paths
+from .constants import (
     AUTOCAD_FOLDER_MAP,
     DOWNLOADED_FOLDER_MAP,
     GENERATED_PREFIX_MAP,
@@ -25,7 +25,7 @@ from constants import (
     _REFERENCE_RE,
     _STANDARD_RE,
 )
-from utils import _slugify, _extract_standard_from_name
+from .utils import _slugify, _extract_standard_from_name
 
 
 def _strategy_reference_sheet(svg_path: Path) -> dict | None:

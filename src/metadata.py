@@ -6,12 +6,12 @@ Metadata assembly, path normalization, and processed-directory resolution.
 
 from pathlib import Path
 
-import paths
-from constants import PIP_CATEGORIES, SCHEMA_VERSION
-from snap_points import detect_snap_points
-from svg_utils import parse_svg_attributes
-from constants import _STANDARD_RE
-from utils import (
+from . import paths
+from .constants import PIP_CATEGORIES, SCHEMA_VERSION
+from .snap_points import detect_snap_points
+from .svg_utils import parse_svg_attributes
+from .constants import _STANDARD_RE
+from .utils import (
     _auto_tags,
     _display_name_from_stem,
     _rel_or_abs,

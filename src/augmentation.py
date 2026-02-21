@@ -11,9 +11,9 @@ import io
 import json
 from pathlib import Path
 
-import paths
-from svg_utils import _render_svg_to_png
-from utils import _safe_std_slug, _source_slug_from_path
+from . import paths
+from .svg_utils import _render_svg_to_png
+from .utils import _safe_std_slug, _source_slug_from_path
 
 
 def _build_augment_transform():
