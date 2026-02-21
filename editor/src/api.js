@@ -2,7 +2,7 @@
 
 import { state } from './state.js';
 import { setStatus, showMsg } from './ui.js';
-import { renderSymbolList, loadStats } from './symbols.js';
+import { renderSymbolList, filterSymbols } from './symbols.js';
 
 // ── Save JSON ────────────────────────────────────────────────────────────────
 export async function saveJSON(silent = false) {
@@ -68,7 +68,7 @@ export async function toggleComplete() {
     showMsg({ err: '✗ Save failed' });
   } else {
     showMsg({ ok: newState ? '✓ Marked complete' : '✓ Marked incomplete' });
-    loadStats();
+    filterSymbols();
   }
 }
 

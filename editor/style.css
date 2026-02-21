@@ -87,6 +87,26 @@ body {
   transition: width 0.35s ease;
 }
 
+#filter-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 5px 8px;
+  border-bottom: 1px solid #333;
+  flex-shrink: 0;
+}
+
+#filter-bar select {
+  width: 100%;
+  background: #3c3c3c;
+  border: 1px solid #555;
+  color: #d4d4d4;
+  border-radius: 3px;
+  padding: 2px 4px;
+  font-family: inherit;
+  font-size: 11px;
+}
+
 #sym-list {
   flex: 1;
   overflow-y: auto;

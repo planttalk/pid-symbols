@@ -41,41 +41,63 @@ export async function previewSymbol(path, name) {
 }
 
 // ── Stats ────────────────────────────────────────────────────────────────────
-export async function loadStats() {
-  try {
-    const res = await fetch('/api/stats');
-    if (!res.ok) return;
-    renderStats(await res.json());
-  } catch { /* silent */ }
-}
+export function loadStats() { /* stats are computed from the filtered list */ }
 
-function renderStats(data) {
-  const pct  = data.percentage ?? 0;
-  const done = data.completed  ?? 0;
-  const tot  = data.total      ?? 0;
+function renderStats(list) {
+  const tot  = list.length;
+  const done = list.filter(s => s.completed).length;
+  const pct  = tot ? Math.round(done / tot * 100) : 0;
   document.getElementById('stats-text').textContent =
     `${done} / ${tot} completed (${pct}%)`;
   document.getElementById('stats-fill').style.width = pct + '%';
 }
 
 // ── Symbol list ──────────────────────────────────────────────────────────────
+function _populateFilter(selectId, values) {
+  const sel = document.getElementById(selectId);
+  const current = sel.value;
+  // keep the "All" placeholder option, rebuild the rest
+  while (sel.options.length > 1) sel.remove(1);
+  for (const v of values) {
+    const opt = document.createElement('option');
+    opt.value       = v;
+    opt.textContent = v;
+    sel.appendChild(opt);
+  }
+  // restore selection if still valid
+  if ([...sel.options].some(o => o.value === current)) sel.value = current;
+}
+
 export async function loadSymbolList() {
   try {
-    const res     = await fetch('/api/symbols');
+    const res        = await fetch('/api/symbols');
     state.allSymbols = await res.json();
   } catch {
     state.allSymbols = [];
     setStatus('Failed to load symbol list.');
   }
-  renderSymbolList(state.allSymbols);
+
+  // Populate filter dropdowns from the full list
+  const sources   = [...new Set(state.allSymbols.map(s => s.source).filter(Boolean))].sort();
+  const standards = [...new Set(state.allSymbols.map(s => s.standard).filter(Boolean))].sort();
+  _populateFilter('filter-source',   sources);
+  _populateFilter('filter-standard', standards);
+
+  filterSymbols();
 }
 
 export function filterSymbols() {
-  const q = document.getElementById('sym-search').value.toLowerCase();
-  renderSymbolList(
-    state.allSymbols.filter(s =>
-      s.name.toLowerCase().includes(q) || s.path.toLowerCase().includes(q))
-  );
+  const q      = document.getElementById('sym-search').value.toLowerCase();
+  const srcVal = document.getElementById('filter-source').value;
+  const stdVal = document.getElementById('filter-standard').value;
+  const list   = state.allSymbols.filter(s => {
+    if (srcVal && s.source   !== srcVal) return false;
+    if (stdVal && s.standard !== stdVal) return false;
+    if (q && !s.name.toLowerCase().includes(q) && !s.path.toLowerCase().includes(q)) return false;
+    return true;
+  });
+  renderSymbolList(list);
+  renderStats(list);
 }
 
 export function renderSymbolList(list) {

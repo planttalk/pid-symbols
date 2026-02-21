@@ -95,17 +95,32 @@ class Handler(http.server.BaseHTTPRequestHandler):
         qs     = urllib.parse.parse_qs(parsed.query)
         p      = parsed.path
 
+        _STATIC_MIME = {
+            ".html": "text/html; charset=utf-8",
+            ".css":  "text/css; charset=utf-8",
+            ".js":   "application/javascript; charset=utf-8",
+            ".svg":  "image/svg+xml",
+            ".png":  "image/png",
+            ".ico":  "image/x-icon",
+        }
+
         if p in ("/", "/index.html"):
             self._serve_file(EDITOR_DIR / "index.html",
                              "text/html; charset=utf-8")
 
-        elif p == "/style.css":
-            self._serve_file(EDITOR_DIR / "style.css",
-                             "text/css; charset=utf-8")
-
-        elif p == "/app.js":
-            self._serve_file(EDITOR_DIR / "app.js",
-                             "application/javascript; charset=utf-8")
+        elif not p.startswith("/api/") and "." in p.split("/")[-1]:
+            # Generic static-file handler for all editor assets (JS modules,
+            # CSS, etc.).  Rejects any path that escapes EDITOR_DIR.
+            rel_clean = p.lstrip("/").replace("/", os.sep)
+            try:
+                target = (EDITOR_DIR / rel_clean).resolve()
+                target.relative_to(EDITOR_DIR.resolve())  # path-traversal guard
+            except ValueError:
+                self._error("Forbidden", 403)
+                return
+            ext  = pathlib.Path(rel_clean).suffix.lower()
+            mime = _STATIC_MIME.get(ext, "application/octet-stream")
+            self._serve_file(target, mime)
 
         elif p == "/api/symbols":
             self._json(_list_symbols())
@@ -247,11 +262,13 @@ def _symbols_from_registry(registry: dict) -> list[dict]:
             completed = bool(sym_data.get("completed", False))
         except (json.JSONDecodeError, OSError):
             pass
+        source = parts[0] if len(parts) == 4 else ""
         results.append({
             "path":      sym_id,
             "name":      sym.get("display_name") or (parts[-1] if parts else sym_id),
             "standard":  sym.get("standard", std_from_id).lower(),
             "category":  sym.get("category", cat_from_id),
+            "source":    source,
             "completed": completed,
         })
     return results
@@ -272,11 +289,14 @@ def _symbols_from_scan() -> list[dict]:
             completed = bool(sym_data.get("completed", False))
         except (json.JSONDecodeError, OSError):
             pass
+        id_parts = rel.with_suffix("").parts
+        source   = id_parts[0] if len(id_parts) == 4 else ""
         results.append({
-            "path":      "/".join(rel.with_suffix("").parts),
+            "path":      "/".join(id_parts),
             "name":      stem,
             "standard":  parts[0] if len(parts) >= 1 else "",
             "category":  parts[1] if len(parts) >= 2 else "",
+            "source":    source,
             "completed": completed,
         })
     return results

@@ -17,7 +17,6 @@ import { loadSymbolList, filterSymbols, nextSymbol } from './symbols.js';
 import { saveJSON, toggleComplete, exportCompleted, generateDebug } from './api.js';
 import { state } from './state.js';
 import { setStatus } from './ui.js';
-import { loadStats } from './symbols.js';
 import { toSvgCoords } from './canvas.js';
 
 // ── Canvas: double-click to add port ────────────────────────────────────────
@@ -81,7 +80,9 @@ document.addEventListener('keydown', e => {
 });
 
 // ── Static event listeners ───────────────────────────────────────────────────
-document.getElementById('sym-search').addEventListener('input',  filterSymbols);
+document.getElementById('sym-search').addEventListener('input',    filterSymbols);
+document.getElementById('filter-source').addEventListener('change',   filterSymbols);
+document.getElementById('filter-standard').addEventListener('change',  filterSymbols);
 document.getElementById('show-grid').addEventListener('change',  toggleGrid);
 document.querySelectorAll('input[name=marker]').forEach(r =>
   r.addEventListener('change', () => {
@@ -115,4 +116,3 @@ document.getElementById('btn-export').addEventListener('click',   exportComplete
 // ── Boot ─────────────────────────────────────────────────────────────────────
 buildTypeGrid();
 loadSymbolList();
-loadStats();
