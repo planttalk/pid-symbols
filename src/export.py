@@ -4,6 +4,9 @@ export.py
 Export and migration utilities:
   - export_completed_symbols: copy completed SVG+JSON pairs to an export directory.
   - migrate_to_source_hierarchy: migrate processed/ from 3-part to 4-part layout.
+  - dedup_input: delete duplicate SVG files from an input directory.
+  - migrate_legacy_completed: merge snap_points/notes from old 3-part JSONs into
+      the matching 4-part JSONs, matched by content hash.
 """
 
 import json
@@ -14,6 +17,7 @@ from pathlib import Path
 from . import paths
 from .constants import PIP_CATEGORIES, SCHEMA_VERSION
 from .metadata import processed_dir_for, resolve_stem
+from .svg_utils import _minify_svg
 from .utils import (
     _metadata_quality,
     _rel_or_abs,
@@ -168,7 +172,7 @@ def migrate_to_source_hierarchy(processed_dir: Path, dry_run: bool) -> None:
 
         base_stem  = json_path.stem
         final_stem = base_stem
-        if final_stem in used_stems[new_target_dir] or (new_target_dir / (final_stem + ".svg")).exists():
+        if final_stem in used_stems[new_target_dir]:
             final_stem = resolve_stem(base_stem, new_target_dir, used_stems[new_target_dir])
         else:
             used_stems[new_target_dir].add(final_stem)
@@ -256,4 +260,241 @@ def migrate_to_source_hierarchy(processed_dir: Path, dry_run: bool) -> None:
     print(f"  Skipped : {skipped}")
     print(f"  Errors  : {m_errors}")
     print(f"  Registry: {new_reg_path}")
+    print(f"{'='*60}")
+
+
+def dedup_input(input_dir: Path, dry_run: bool) -> None:
+    """Delete duplicate SVG files from input_dir.
+
+    Two SVGs are considered duplicates when their canonical hashes match
+    (same structure, ignoring randomly-generated internal IDs and metadata
+    timestamps).  Within each duplicate group the file with the shortest
+    path is kept; all others are deleted (or listed in dry-run mode).
+    """
+    if not input_dir.is_dir():
+        print(f"Error: input directory not found: {input_dir}")
+        return
+
+    svg_files = sorted(input_dir.rglob("*.svg"))
+    print(f"Scanning {len(svg_files)} SVG files under {input_dir}\n")
+
+    # hash → list of paths, in the order they are encountered
+    groups: dict[str, list[Path]] = {}
+    errors = 0
+
+    for svg_path in svg_files:
+        if "_debug" in svg_path.stem:
+            continue
+        try:
+            content = svg_path.read_text(encoding="utf-8", errors="replace")
+            h = _svg_sha256(_minify_svg(content))
+        except OSError:
+            print(f"  [ERROR] cannot read {svg_path.relative_to(input_dir)}")
+            errors += 1
+            continue
+        groups.setdefault(h, []).append(svg_path)
+
+    to_delete: list[tuple[Path, Path]] = []  # (kept, deleted)
+
+    for paths_list in groups.values():
+        if len(paths_list) < 2:
+            continue
+        # Keep the file with the shortest relative path (usually the more
+        # "canonical" location); fall back to alphabetical order.
+        kept = min(paths_list, key=lambda p: (len(p.parts), str(p)))
+        for dup in paths_list:
+            if dup != kept:
+                to_delete.append((kept, dup))
+
+    if not to_delete:
+        print("No duplicates found.")
+        print(f"{'='*60}")
+        return
+
+    deleted = 0
+    for kept, dup in to_delete:
+        rel_kept = kept.relative_to(input_dir)
+        rel_dup  = dup.relative_to(input_dir)
+        print(f"  {'[DRY]' if dry_run else '[DEL ]'} {rel_dup}  (kept: {rel_kept})")
+        if not dry_run:
+            try:
+                dup.unlink()
+                deleted += 1
+            except OSError as exc:
+                print(f"           ERROR: {exc}")
+                errors += 1
+
+    print(f"\n{'='*60}")
+    print(f"  Duplicates found : {len(to_delete)}")
+    print(f"  Deleted          : {deleted if not dry_run else 0}")
+    if errors:
+        print(f"  Errors           : {errors}")
+    if dry_run:
+        print("  [DRY RUN -- no files deleted]")
+    print(f"{'='*60}")
+
+
+def migrate_legacy_completed(processed_dir: Path, dry_run: bool) -> None:
+    """Merge completed snap_points from old 3-part JSONs into 4-part JSONs.
+
+    Old layout: processed/{standard}/{category}/{stem}.json  (id has 2 slashes)
+    New layout: processed/{source}/{standard}/{category}/{stem}.json  (id has 3 slashes)
+
+    Matching strategy (in order):
+      1. Content hash — most reliable; handles renames and deduplication.
+      2. source_path + original_filename — fallback when the SVG was altered
+         enough to change the hash but the origin path is unambiguous.
+
+    For each matched pair the following fields are merged into the new JSON:
+      snap_points, notes, completed, content_hash (from legacy SVG).
+    Already-completed new JSONs are not overwritten unless the legacy record
+    has more snap_points.
+    """
+    if not processed_dir.is_dir():
+        print(f"Error: processed directory not found: {processed_dir}")
+        return
+
+    # ── Step 1: build lookup maps from all 4-part JSONs ───────────────────
+    print("Building new-structure index…")
+    hash_to_new:   dict[str, Path] = {}   # content_hash → json path
+    srckey_to_new: dict[str, Path] = {}   # "source_path|orig_filename" → json path
+
+    for json_path in sorted(processed_dir.rglob("*.json")):
+        if json_path.name == "registry.json" or "_debug" in json_path.stem:
+            continue
+        try:
+            meta = json.loads(json_path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            continue
+
+        sym_id = meta.get("id", "")
+        if sym_id.count("/") < 3:
+            # still old structure – skip
+            continue
+
+        # index by stored hash
+        stored_hash = meta.get("content_hash", "")
+        if stored_hash:
+            hash_to_new[stored_hash] = json_path
+
+        # index by source_path + original_filename
+        src   = meta.get("source_path", "")
+        orig  = meta.get("original_filename", "")
+        if src and orig:
+            srckey_to_new[f"{src}|{orig}"] = json_path
+
+    print(f"  Indexed {len(hash_to_new)} new-structure symbols by hash, "
+          f"{len(srckey_to_new)} by source key.\n")
+
+    # ── Step 2: find completed old-structure JSONs ─────────────────────────
+    legacy: list[tuple[Path, dict]] = []
+
+    for json_path in sorted(processed_dir.rglob("*.json")):
+        if json_path.name == "registry.json" or "_debug" in json_path.stem:
+            continue
+        try:
+            meta = json.loads(json_path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            continue
+
+        if meta.get("id", "").count("/") >= 3:
+            continue   # already new structure
+        if not meta.get("completed", False):
+            continue
+
+        legacy.append((json_path, meta))
+
+    print(f"Found {len(legacy)} completed legacy symbol(s).\n")
+
+    if not legacy:
+        print("Nothing to migrate.")
+        return
+
+    # ── Step 3: match and merge ────────────────────────────────────────────
+    merged   = 0
+    skipped  = 0
+    no_match = 0
+    errors   = 0
+
+    for old_json, old_meta in legacy:
+        old_svg = old_json.with_suffix(".svg")
+
+        # Compute hash of the legacy SVG for matching
+        legacy_hash = ""
+        if old_svg.exists():
+            try:
+                content = old_svg.read_text(encoding="utf-8", errors="replace")
+                legacy_hash = _svg_sha256(_minify_svg(content))
+            except OSError:
+                pass
+
+        # Try hash lookup first, then source-key fallback
+        new_json = None
+        match_method = ""
+        if legacy_hash and legacy_hash in hash_to_new:
+            new_json     = hash_to_new[legacy_hash]
+            match_method = "hash"
+        else:
+            src_key = f"{old_meta.get('source_path', '')}|{old_meta.get('original_filename', '')}"
+            if src_key in srckey_to_new:
+                new_json     = srckey_to_new[src_key]
+                match_method = "source_path"
+
+        rel_old = old_json.relative_to(processed_dir)
+
+        if new_json is None:
+            print(f"  [MISS] {rel_old}  — no matching new-structure symbol found")
+            no_match += 1
+            continue
+
+        try:
+            new_meta = json.loads(new_json.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError) as exc:
+            print(f"  [ERR ] {rel_old}  — cannot read target {new_json}: {exc}")
+            errors += 1
+            continue
+
+        old_pts = old_meta.get("snap_points", [])
+        new_pts = new_meta.get("snap_points", [])
+
+        # Skip if the new record is already complete with at least as many points
+        if new_meta.get("completed") and len(new_pts) >= len(old_pts):
+            print(f"  [SKIP] {rel_old}  → {new_json.relative_to(processed_dir)}"
+                  f"  (already complete, {len(new_pts)} pts)")
+            skipped += 1
+            continue
+
+        rel_new = new_json.relative_to(processed_dir)
+        print(f"  {'[DRY]' if dry_run else '[MERGE]'} {rel_old}"
+              f"  ->  {rel_new}"
+              f"  ({match_method}, {len(old_pts)} snap_points)")
+
+        if not dry_run:
+            new_meta["snap_points"] = old_pts
+            new_meta["completed"]   = True
+            if old_meta.get("notes"):
+                new_meta["notes"] = old_meta["notes"]
+            if legacy_hash:
+                new_meta["content_hash"] = legacy_hash
+            try:
+                new_json.write_text(
+                    json.dumps(new_meta, indent=2, ensure_ascii=False) + "\n",
+                    encoding="utf-8",
+                )
+                merged += 1
+            except OSError as exc:
+                print(f"           ERROR writing {new_json}: {exc}")
+                errors += 1
+        else:
+            merged += 1   # count as "would merge" in dry-run
+
+    print(f"\n{'='*60}")
+    print(f"  Legacy completed : {len(legacy)}")
+    print(f"  {'Would merge' if dry_run else 'Merged'}    : {merged}")
+    print(f"  Skipped (done)   : {skipped}")
+    print(f"  No match found   : {no_match}")
+    if errors:
+        print(f"  Errors           : {errors}")
+    if dry_run:
+        print("  [DRY RUN -- no files written]")
     print(f"{'='*60}")

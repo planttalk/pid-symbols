@@ -20,6 +20,10 @@ Usage:
     python main.py --migrate --dry-run
     python main.py --migrate
     python main.py --export-yolo ./yolo-out --augment-count 3
+    python main.py --dedup-input --dry-run
+    python main.py --dedup-input
+    python main.py --migrate-legacy-completed --dry-run
+    python main.py --migrate-legacy-completed
 """
 
 import argparse
@@ -31,7 +35,12 @@ import src.paths as paths
 from src.augmentation import augment_svgs, export_yolo_datasets
 from src.classifier import classify
 from src.constants import SCHEMA_VERSION
-from src.export import export_completed_symbols, migrate_to_source_hierarchy
+from src.export import (
+    dedup_input,
+    export_completed_symbols,
+    migrate_legacy_completed,
+    migrate_to_source_hierarchy,
+)
 from src.metadata import build_metadata, processed_dir_for, resolve_stem
 from src.svg_utils import _minify_svg
 from src.utils import _metadata_quality, _slugify, _svg_sha256
@@ -88,6 +97,18 @@ def main() -> None:
         "--export-yolo", default=None, metavar="DIR",
         help="Export YOLO v8 datasets (one per standard) to DIR."
     )
+    parser.add_argument(
+        "--dedup-input", action="store_true",
+        help="Delete duplicate SVG files from the input directory (use --dry-run to preview)."
+    )
+    parser.add_argument(
+        "--migrate-legacy-completed", action="store_true",
+        help=(
+            "Find completed symbols in old 3-part processed/ layout and merge their "
+            "snap_points into the matching 4-part symbol, matched by content hash. "
+            "Use --dry-run to preview without writing."
+        ),
+    )
     args = parser.parse_args()
 
     # Override module-level path globals when CLI args are provided
@@ -109,6 +130,14 @@ def main() -> None:
 
     if args.migrate:
         migrate_to_source_hierarchy(paths.PROCESSED_DIR, args.dry_run)
+        return
+
+    if args.dedup_input:
+        dedup_input(paths.INPUT_DIR, args.dry_run)
+        return
+
+    if args.migrate_legacy_completed:
+        migrate_legacy_completed(paths.PROCESSED_DIR, args.dry_run)
         return
 
     if args.export_yolo:

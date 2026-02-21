@@ -65,13 +65,16 @@ def processed_dir_for(classification: dict, source_path: str = "") -> Path:
 
 def resolve_stem(base_stem: str, target_dir: Path, used: set[str]) -> str:
     """
-    Return a collision-free stem within target_dir.
-    If 'base_stem' is already taken (in used or on disk), appends _2, _3, …
+    Return a collision-free stem within target_dir for the current run.
+    Only checks the in-memory `used` set — not the disk — so re-running the
+    pipeline overwrites previous output idempotently instead of generating _2
+    suffixes.  The `used` set alone is sufficient to prevent two different SVGs
+    processed in the same run from receiving the same output filename.
     Adds the chosen stem to `used`.
     """
     stem = base_stem
     counter = 2
-    while stem in used or (target_dir / (stem + ".svg")).exists():
+    while stem in used:
         stem = f"{base_stem}_{counter}"
         counter += 1
     used.add(stem)

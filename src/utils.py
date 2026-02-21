@@ -73,9 +73,52 @@ def _source_slug_from_path(source_path: str) -> str:
     return _slugify(top) or "unknown_source"
 
 
+def _canonicalize_svg_ids(content: str) -> str:
+    """Replace all SVG id="…" values and their url(#…)/href="#…" references
+    with stable sequential names so that structurally identical SVGs that only
+    differ in randomly-generated IDs (e.g. from matplotlib/autocad exporters)
+    hash to the same value.
+    """
+    # Collect all id values in document order — keeps mapping stable regardless
+    # of how the exporter names them.
+    id_re  = re.compile(r'\bid="([^"]+)"')
+    ids    = list(dict.fromkeys(m.group(1) for m in id_re.finditer(content)))
+    if not ids:
+        return content
+
+    mapping = {old: f"_cid{i}" for i, old in enumerate(ids)}
+
+    # Replace definitions: id="old" → id="_cidN"
+    def _repl_def(m: re.Match) -> str:
+        return f'id="{mapping[m.group(1)]}"'
+    content = id_re.sub(_repl_def, content)
+
+    # Replace all reference forms that point to an id:
+    #   url(#old)   href="#old"   xlink:href="#old"
+    ref_re = re.compile(
+        r'(?P<url>url\(#)(?P<id>[^)]+)(?P<close>\))'
+        r'|(?P<href>(?:xlink:)?href=")#(?P<hid>[^"]+)(?P<hclose>")'
+    )
+
+    def _repl_ref(m: re.Match) -> str:
+        if m.group("url"):
+            old = m.group("id")
+            new = mapping.get(old, old)
+            return f'{m.group("url")}{new}{m.group("close")}'
+        old = m.group("hid")
+        new = mapping.get(old, old)
+        return f'{m.group("href")}#{new}{m.group("hclose")}'
+
+    return ref_re.sub(_repl_ref, content)
+
+
 def _svg_sha256(content: str) -> str:
-    """Return the SHA-256 hex digest of an SVG string."""
-    return hashlib.sha256(content.encode("utf-8")).hexdigest()
+    """Return the SHA-256 hex digest of an SVG string, after canonicalizing
+    internal IDs so that structurally identical SVGs with different random IDs
+    hash identically.
+    """
+    canonical = _canonicalize_svg_ids(content)
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
 def _metadata_quality(meta: dict) -> int:
