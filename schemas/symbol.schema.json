@@ -31,8 +31,8 @@
     },
     "id": {
       "type": "string",
-      "pattern": "^[a-z0-9_]+/[a-z0-9_]+/[a-z0-9_]+",
-      "description": "Stable symbol identifier: <standard_slug>/<category>/<stem>."
+      "pattern": "^[a-z0-9_]+(/[a-z0-9_]+){2,3}$",
+      "description": "Stable symbol identifier: <source_slug>/<standard_slug>/<category>/<stem> (4-part) or <standard_slug>/<category>/<stem> (3-part legacy)."
     },
     "filename": {
       "type": "string",
@@ -113,20 +113,52 @@
     },
     "snap_points": {
       "type": "array",
-      "description": "Connection points for CAD integration (future enrichment).",
+      "description": "Connection points (or free-placement zones) for CAD integration.",
       "items": {
         "type": "object",
-        "required": ["id", "x", "y"],
+        "required": ["id"],
         "properties": {
-          "id": { "type": "string" },
-          "x":  { "type": "number" },
-          "y":  { "type": "number" }
-        }
+          "id":   { "type": "string" },
+          "type": { "type": "string" },
+          "x":    { "type": "number" },
+          "y":    { "type": "number" },
+          "locked": { "type": "boolean" },
+          "zone": {
+            "type": "object",
+            "required": ["x", "y", "width", "height"],
+            "additionalProperties": false,
+            "properties": {
+              "x":      { "type": "number" },
+              "y":      { "type": "number" },
+              "width":  { "type": "number", "exclusiveMinimum": 0 },
+              "height": { "type": "number", "exclusiveMinimum": 0 }
+            }
+          }
+        },
+        "oneOf": [
+          {
+            "required": ["x", "y"],
+            "not": { "required": ["zone"] }
+          },
+          {
+            "required": ["zone"],
+            "not": { "required": ["x", "y"] }
+          }
+        ]
       }
     },
     "notes": {
       "type": "string",
       "description": "Free-text notes for manual annotation."
+    },
+    "completed": {
+      "type": "boolean",
+      "description": "Set by the port editor when all snap points have been reviewed."
+    },
+    "content_hash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$",
+      "description": "SHA-256 hex digest of the minified SVG content."
     }
   }
 }

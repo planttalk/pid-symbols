@@ -28,9 +28,13 @@ Usage:
     python main.py --augment-source completed --augment-count 5 --augment-min-size 256
     python main.py --export-completed ./exported
     python main.py --export-completed ./exported --export-source ./processed
+    python main.py --migrate --dry-run
+    python main.py --migrate
+    python main.py --export-yolo ./yolo-out --augment-count 3
 """
 
 import argparse
+import hashlib
 import io
 import json
 import re
@@ -252,6 +256,49 @@ def _rel_or_abs(path: Path, base: Path) -> str:
         return str(path).replace("\\", "/")
 
 
+def _source_slug_from_path(source_path: str) -> str:
+    """Derive a source slug from the relative source path.
+
+    Examples
+    --------
+    input/autocad-parser/...                       → 'autocad_parser'
+    input/pid-symbols-generator/downloaded/...     → 'pid_symbols_generator_downloaded'
+    input/pid-symbols-generator/generated/...      → 'pid_symbols_generator_generated'
+    anything else                                  → 'unknown_source'
+    """
+    parts = source_path.replace("\\", "/").split("/")
+    # parts[0] should be 'input', parts[1] is the immediate subdirectory
+    if len(parts) < 2:
+        return "unknown_source"
+    top = parts[1]
+    if top == "autocad-parser":
+        return "autocad_parser"
+    if top == "pid-symbols-generator":
+        if len(parts) >= 3:
+            sub = parts[2].lower()
+            return f"pid_symbols_generator_{_slugify(sub)}"
+        return "pid_symbols_generator"
+    return _slugify(top) or "unknown_source"
+
+
+def _svg_sha256(content: str) -> str:
+    """Return the SHA-256 hex digest of an SVG string."""
+    return hashlib.sha256(content.encode("utf-8")).hexdigest()
+
+
+def _metadata_quality(meta: dict) -> int:
+    """Score a metadata record; higher = better quality (used for deduplication)."""
+    score = 0
+    score += len(meta.get("snap_points", []))
+    if meta.get("notes"):
+        score += 2
+    if meta.get("completed"):
+        score += 5
+    conf = meta.get("classification", {}).get("confidence", "none")
+    score += {"high": 3, "low": 1, "none": 0}.get(conf, 0)
+    return score
+
+
 def _auto_tags(category: str, subcategory: str) -> list[str]:
     """
     Build a de-duplicated tag list from category + subcategory words.
@@ -424,6 +471,199 @@ def augment_svgs(input_dir: Path, output_dir: Path, count: int, dry_run: bool, m
         print("  [DRY RUN -- no files written]")
     else:
         print(f"  Output   : {output_dir}")
+    print(f"{'='*60}")
+
+
+def _build_augment_transform_yolo():
+    """Return an Albumentations pipeline compatible with YOLO bounding-box labels."""
+    import albumentations as A
+
+    return A.Compose(
+        [
+            A.HorizontalFlip(p=0.5),
+            A.ShiftScaleRotate(shift_limit=0.05, scale_limit=0.1, rotate_limit=15, p=0.5),
+            A.RandomBrightnessContrast(p=0.3),
+            A.GaussNoise(p=0.2),
+        ],
+        bbox_params=A.BboxParams(
+            format="yolo",
+            label_fields=["class_labels"],
+            min_visibility=0.1,
+        ),
+    )
+
+
+def _tight_bbox_normalized(img_arr) -> tuple | None:
+    """Return (cx, cy, w, h) normalized to [0,1] for the non-white region, or None if blank."""
+    import numpy as np
+
+    # Treat pixels with mean value < 250 as non-background
+    gray = img_arr.mean(axis=2)
+    mask = gray < 250
+
+    rows = np.any(mask, axis=1)
+    cols = np.any(mask, axis=0)
+
+    if not rows.any():
+        return None  # blank image
+
+    r_min, r_max = int(np.argmax(rows)), int(len(rows) - 1 - np.argmax(rows[::-1]))
+    c_min, c_max = int(np.argmax(cols)), int(len(cols) - 1 - np.argmax(cols[::-1]))
+
+    H, W = img_arr.shape[:2]
+    cx = ((c_min + c_max) / 2) / W
+    cy = ((r_min + r_max) / 2) / H
+    bw = (c_max - c_min + 1) / W
+    bh = (r_max - r_min + 1) / H
+
+    # Clamp to [0, 1]
+    cx = max(0.0, min(1.0, cx))
+    cy = max(0.0, min(1.0, cy))
+    bw = max(0.0, min(1.0, bw))
+    bh = max(0.0, min(1.0, bh))
+
+    return (cx, cy, bw, bh)
+
+
+def export_yolo_datasets(
+    registry_path: Path,
+    output_dir: Path,
+    count: int,
+    dry_run: bool,
+    min_size: int,
+) -> None:
+    """Export YOLO v8 datasets (one per standard) from the symbol registry."""
+    import numpy as np
+    from PIL import Image
+
+    if not registry_path.exists():
+        print(f"Error: registry not found: {registry_path}")
+        return
+
+    try:
+        registry = json.loads(registry_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError) as exc:
+        print(f"Error loading registry: {exc}")
+        return
+
+    symbols = registry.get("symbols", [])
+
+    # Filter out reference sheets and truly unknown symbols
+    symbols = [
+        s for s in symbols
+        if s.get("standard", "").lower() not in ("", "unknown")
+        and s.get("classification", {}).get("confidence", "none") != "none"
+    ]
+
+    if not symbols:
+        print("No eligible symbols found in registry.")
+        return
+
+    # Group by standard
+    by_standard: dict[str, list[dict]] = {}
+    for sym in symbols:
+        std = sym.get("standard", "unknown")
+        by_standard.setdefault(std, []).append(sym)
+
+    transform = _build_augment_transform_yolo()
+    total_written = 0
+    total_skipped = 0
+
+    for std, sym_list in sorted(by_standard.items()):
+        std_slug = _safe_std_slug(std)
+        dataset_dir = output_dir / f"yolo-{std_slug}"
+        img_dir     = dataset_dir / "images" / "train"
+        lbl_dir     = dataset_dir / "labels" / "train"
+
+        # Build sorted category list for this standard
+        categories = sorted({s.get("category", "unknown") for s in sym_list})
+        class_map  = {cat: idx for idx, cat in enumerate(categories)}
+
+        # Write data.yaml (no PyYAML dependency)
+        yaml_content = (
+            f"path: {dataset_dir.resolve()}\n"
+            f"train: images/train\n"
+            f"nc: {len(categories)}\n"
+            f"names: [{', '.join(repr(c) for c in categories)}]\n"
+        )
+
+        print(f"\n[{std}]  {len(sym_list)} symbols, {len(categories)} classes")
+
+        if not dry_run:
+            dataset_dir.mkdir(parents=True, exist_ok=True)
+            (dataset_dir / "data.yaml").write_text(yaml_content, encoding="utf-8")
+            img_dir.mkdir(parents=True, exist_ok=True)
+            lbl_dir.mkdir(parents=True, exist_ok=True)
+
+        for sym in sym_list:
+            cat        = sym.get("category", "unknown")
+            class_idx  = class_map[cat]
+            svg_rel    = sym.get("svg_path", "")
+            svg_file   = (REPO_ROOT / svg_rel) if svg_rel else None
+
+            if not svg_file or not svg_file.exists():
+                total_skipped += 1
+                continue
+
+            try:
+                png_bytes = _render_svg_to_png(svg_file)
+                base      = Image.open(io.BytesIO(png_bytes)).convert("RGB")
+                if min_size > 0:
+                    w, h  = base.size
+                    short = min(w, h)
+                    if short < min_size:
+                        scale = min_size / max(short, 1)
+                        base  = base.resize(
+                            (max(1, int(round(w * scale))), max(1, int(round(h * scale)))),
+                            resample=Image.LANCZOS,
+                        )
+                base_arr = np.array(base)
+            except Exception:
+                total_skipped += 1
+                continue
+
+            bbox = _tight_bbox_normalized(base_arr)
+            if bbox is None:
+                total_skipped += 1
+                continue
+
+            cx, cy, bw, bh = bbox
+            stem = sym.get("id", svg_file.stem).replace("/", "_")
+
+            for i in range(count):
+                try:
+                    result = transform(
+                        image=base_arr,
+                        bboxes=[[cx, cy, bw, bh]],
+                        class_labels=[class_idx],
+                    )
+                    aug_img    = result["image"]
+                    aug_bboxes = result["bboxes"]
+                    aug_labels = result["class_labels"]
+                except Exception:
+                    continue
+
+                if not aug_bboxes:
+                    continue
+
+                out_name = f"{stem}_aug{i + 1}"
+                if not dry_run:
+                    Image.fromarray(aug_img).save(img_dir / (out_name + ".png"), format="PNG")
+                    lbl_lines = "\n".join(
+                        f"{lbl} {box[0]:.6f} {box[1]:.6f} {box[2]:.6f} {box[3]:.6f}"
+                        for lbl, box in zip(aug_labels, aug_bboxes)
+                    )
+                    (lbl_dir / (out_name + ".txt")).write_text(lbl_lines + "\n", encoding="utf-8")
+                total_written += 1
+
+    print(f"\n{'='*60}")
+    print(f"  Standards : {len(by_standard)}")
+    print(f"  Written   : {total_written if not dry_run else 0}")
+    print(f"  Skipped   : {total_skipped}")
+    if dry_run:
+        print("  [DRY RUN -- no files written]")
+    else:
+        print(f"  Output    : {output_dir}")
     print(f"{'='*60}")
 
 
@@ -1058,12 +1298,17 @@ def _normalize_stem(stem: str, standard: str) -> str:
     return f"{std_slug}_{body}"
 
 
-def processed_dir_for(classification: dict) -> Path:
-    """Return the processed/ subdirectory for this classification."""
-    cat = classification["category"]
+def processed_dir_for(classification: dict, source_path: str = "") -> Path:
+    """Return the processed/ subdirectory for this classification.
+
+    New layout: processed/{source_slug}/{standard_slug}/{category}/
+    """
+    cat         = classification["category"]
+    source_slug = _source_slug_from_path(source_path) if source_path else "unknown_source"
+
     if cat in PIP_CATEGORIES:
-        return PROCESSED_DIR / "pip" / cat
-    return PROCESSED_DIR / _safe_std_slug(classification["standard"]) / cat
+        return PROCESSED_DIR / source_slug / "pip" / cat
+    return PROCESSED_DIR / source_slug / _safe_std_slug(classification["standard"]) / cat
 
 
 def resolve_stem(base_stem: str, target_dir: Path, used: set[str]) -> str:
@@ -1081,16 +1326,19 @@ def resolve_stem(base_stem: str, target_dir: Path, used: set[str]) -> str:
     return stem
 
 
-def build_metadata(svg_path: Path, final_stem: str, classification: dict) -> dict:
+def build_metadata(svg_path: Path, final_stem: str, classification: dict,
+                   source_path: str = "") -> dict:
     """Assemble the complete metadata dict for one SVG."""
-    svg_attrs  = parse_svg_attributes(svg_path)
-    target_dir = processed_dir_for(classification)
+    svg_attrs   = parse_svg_attributes(svg_path)
+    src_path    = source_path or _rel_or_abs(svg_path, REPO_ROOT)
+    source_slug = _source_slug_from_path(src_path)
+    target_dir  = processed_dir_for(classification, src_path)
 
     cat = classification["category"]
     if cat in PIP_CATEGORIES:
-        symbol_id = f"pip/{cat}/{final_stem}"
+        symbol_id = f"{source_slug}/pip/{cat}/{final_stem}"
     else:
-        symbol_id = f"{_safe_std_slug(classification['standard'])}/{cat}/{final_stem}"
+        symbol_id = f"{source_slug}/{_safe_std_slug(classification['standard'])}/{cat}/{final_stem}"
 
     return {
         "schema_version":    SCHEMA_VERSION,
@@ -1194,6 +1442,193 @@ def export_completed_symbols(source_dir: Path, export_dir: Path, dry_run: bool) 
     print(f"{'='*60}")
 
 
+def migrate_to_source_hierarchy(processed_dir: Path, dry_run: bool) -> None:
+    """Migrate processed/ from 3-part IDs to 4-part source-aware hierarchy.
+
+    For each symbol JSON found in processed_dir:
+    1. Reads source_path to determine source_slug via _source_slug_from_path.
+    2. Computes new target directory and 4-part ID.
+    3. Detects duplicates by content hash; keeps the higher-quality copy.
+    4. Moves SVG + JSON to new paths (dry_run = only print, no writes).
+    5. Rewrites registry.json with updated entries and hashes map.
+    """
+    if not processed_dir.is_dir():
+        print(f"Error: processed directory not found: {processed_dir}")
+        return
+
+    reg_path = processed_dir / "registry.json"
+    # Back up registry before doing anything
+    if not dry_run and reg_path.exists():
+        ts      = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        bak     = reg_path.with_name(f"registry.{ts}.bak.json")
+        shutil.copy2(reg_path, bak)
+        print(f"Registry backed up → {bak.name}")
+
+    json_files = sorted(processed_dir.rglob("*.json"))
+    moves: list[tuple] = []  # (old_json, new_json, old_svg, new_svg, meta)
+
+    # Track new stems per target dir
+    used_stems: dict[Path, set[str]] = {}
+    hash_map:   dict[str, dict]      = {}  # content_hash → best meta dict
+    hashes:     dict[str, list[str]] = {}
+
+    skipped = 0
+
+    for json_path in json_files:
+        if json_path.name == "registry.json" or "_debug" in json_path.stem:
+            continue
+        # Skip files already in the new 4-part hierarchy (heuristic: 4 levels deep)
+        try:
+            rel_parts = json_path.relative_to(processed_dir).parts
+        except ValueError:
+            continue
+        try:
+            meta = json.loads(json_path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            print(f"  [SKIP] cannot read {json_path}")
+            skipped += 1
+            continue
+
+        svg_path = json_path.with_suffix(".svg")
+        if not svg_path.exists():
+            print(f"  [SKIP] missing SVG for {json_path.name}")
+            skipped += 1
+            continue
+
+        # Compute content hash
+        try:
+            content = svg_path.read_text(encoding="utf-8", errors="replace")
+            content_hash = _svg_sha256(content)
+        except OSError:
+            content_hash = ""
+
+        # Determine source slug from stored source_path field
+        source_path_field = meta.get("source_path", "")
+        source_slug       = _source_slug_from_path(source_path_field) if source_path_field else "unknown_source"
+
+        # Reconstruct classification from meta fields
+        cat       = meta.get("category", "unknown")
+        standard  = meta.get("standard", "unknown")
+        confidence = meta.get("classification", {}).get("confidence", "none")
+        method     = meta.get("classification", {}).get("method", "")
+        classification = {
+            "category":   cat,
+            "standard":   standard,
+            "subcategory": meta.get("subcategory", ""),
+            "confidence": confidence,
+            "method":     method,
+        }
+
+        new_target_dir = PROCESSED_DIR / source_slug / (
+            "pip" if cat in PIP_CATEGORIES else _safe_std_slug(standard)
+        ) / cat
+        new_target_dir = new_target_dir
+
+        if new_target_dir not in used_stems:
+            used_stems[new_target_dir] = set()
+
+        # Generate stem
+        base_stem  = json_path.stem  # keep existing stem
+        final_stem = base_stem
+        if final_stem in used_stems[new_target_dir] or (new_target_dir / (final_stem + ".svg")).exists():
+            final_stem = resolve_stem(base_stem, new_target_dir, used_stems[new_target_dir])
+        else:
+            used_stems[new_target_dir].add(final_stem)
+
+        # Build new 4-part ID
+        if cat in PIP_CATEGORIES:
+            new_id = f"{source_slug}/pip/{cat}/{final_stem}"
+        else:
+            new_id = f"{source_slug}/{_safe_std_slug(standard)}/{cat}/{final_stem}"
+
+        new_json = new_target_dir / (final_stem + ".json")
+        new_svg  = new_target_dir / (final_stem + ".svg")
+
+        # Deduplication by content hash
+        if content_hash and content_hash in hash_map:
+            existing_meta = hash_map[content_hash]
+            new_quality   = _metadata_quality(meta)
+            old_quality   = _metadata_quality(existing_meta)
+            if new_quality <= old_quality:
+                print(f"  [DUP ] {json_path.name}: duplicate of {existing_meta.get('id')}, skipping")
+                hashes.setdefault(content_hash, []).append(new_id)
+                skipped += 1
+                continue
+            else:
+                print(f"  [DUP+] {json_path.name}: better quality than {existing_meta.get('id')}, replacing")
+                hashes.setdefault(content_hash, []).append(existing_meta.get("id", ""))
+                hash_map[content_hash] = meta
+        elif content_hash:
+            hash_map[content_hash] = meta
+            hashes[content_hash]   = [new_id]
+
+        old_json = json_path
+        old_svg  = svg_path
+
+        # Update meta fields
+        meta["id"]            = new_id
+        meta["svg_path"]      = _rel_or_abs(new_svg, REPO_ROOT)
+        meta["metadata_path"] = _rel_or_abs(new_json, REPO_ROOT)
+        if content_hash:
+            meta["content_hash"] = content_hash
+
+        print(
+            f"  {'[DRY]' if dry_run else '[MOVE]'} "
+            f"{old_json.relative_to(processed_dir)}  →  {new_json.relative_to(processed_dir)}"
+        )
+        moves.append((old_json, new_json, old_svg, new_svg, meta))
+
+    if dry_run:
+        print(f"\n{'='*60}")
+        print(f"  Would move : {len(moves)}")
+        print(f"  Skipped    : {skipped}")
+        print("  [DRY RUN -- no files written]")
+        print(f"{'='*60}")
+        return
+
+    # Execute moves
+    moved   = 0
+    m_errors = 0
+    new_registry: list[dict] = []
+    for old_json, new_json, old_svg, new_svg, meta in moves:
+        try:
+            new_json.parent.mkdir(parents=True, exist_ok=True)
+            shutil.move(str(old_svg),  str(new_svg))
+            shutil.move(str(old_json), str(new_json))
+            new_json.write_text(
+                json.dumps(meta, indent=2, ensure_ascii=False) + "\n",
+                encoding="utf-8",
+            )
+            new_registry.append(meta)
+            moved += 1
+        except OSError as exc:
+            print(f"  [ERROR] {old_json.name}: {exc}")
+            m_errors += 1
+
+    # Write new registry
+    new_reg_path = processed_dir / "registry.json"
+    with open(new_reg_path, "w", encoding="utf-8") as fh:
+        json.dump(
+            {
+                "schema_version": SCHEMA_VERSION,
+                "generated_at":   datetime.now(timezone.utc).isoformat(),
+                "total_symbols":  len(new_registry),
+                "symbols":        new_registry,
+                "hashes":         hashes,
+            },
+            fh,
+            indent=2,
+            ensure_ascii=False,
+        )
+
+    print(f"\n{'='*60}")
+    print(f"  Moved   : {moved}")
+    print(f"  Skipped : {skipped}")
+    print(f"  Errors  : {m_errors}")
+    print(f"  Registry: {new_reg_path}")
+    print(f"{'='*60}")
+
+
 # Main
 
 def main() -> None:
@@ -1239,6 +1674,14 @@ def main() -> None:
         "--export-source", default=None, metavar="DIR",
         help="Source symbols root for export (default: <repo>/processed)."
     )
+    parser.add_argument(
+        "--migrate", action="store_true",
+        help="Migrate processed/ to source-aware 4-part folder hierarchy."
+    )
+    parser.add_argument(
+        "--export-yolo", default=None, metavar="DIR",
+        help="Export YOLO v8 datasets (one per standard) to DIR."
+    )
     args = parser.parse_args()
 
     # Override module-level path globals when CLI args are provided
@@ -1258,6 +1701,19 @@ def main() -> None:
         source_dir = (Path(args.export_source).resolve()
                       if args.export_source else PROCESSED_DIR)
         export_completed_symbols(source_dir, export_dir, args.dry_run)
+        return
+
+    if args.migrate:
+        migrate_to_source_hierarchy(PROCESSED_DIR, args.dry_run)
+        return
+
+    if args.export_yolo:
+        yolo_out = Path(args.export_yolo).resolve()
+        registry_path = PROCESSED_DIR / "registry.json"
+        export_yolo_datasets(
+            registry_path, yolo_out,
+            args.augment_count, args.dry_run, args.augment_min_size,
+        )
         return
 
     augment_mode = bool(args.augment or args.augment_source)
@@ -1284,25 +1740,68 @@ def main() -> None:
 
     # Track used stems per target directory to avoid collisions
     used_stems: dict[Path, set[str]] = {}
+    # Track content hashes for deduplication: hash → first symbol_id
+    hash_map: dict[str, str] = {}
+    # Full hash registry: hash → [symbol_id, ...]
+    hashes: dict[str, list[str]] = {}
+    duplicates = 0
 
     for svg_path in svg_files:
         if "_debug" in svg_path.stem:
             continue
         rel = svg_path.relative_to(REPO_ROOT)
+        src_rel = str(rel).replace("\\", "/")
         try:
             classification = classify(svg_path)
-            target_dir     = processed_dir_for(classification)
+            target_dir     = processed_dir_for(classification, src_rel)
 
             if target_dir not in used_stems:
                 used_stems[target_dir] = set()
 
             base_stem  = _normalize_stem(svg_path.stem, classification["standard"])
             final_stem = resolve_stem(base_stem, target_dir, used_stems[target_dir])
-            meta       = build_metadata(svg_path, final_stem, classification)
+            meta       = build_metadata(svg_path, final_stem, classification, src_rel)
         except Exception as exc:
             print(f"  [ERROR] {rel}: {exc}")
             errors += 1
             continue
+
+        # Compute content hash from minified SVG
+        raw_svg     = svg_path.read_text(encoding="utf-8", errors="replace")
+        minified    = _minify_svg(raw_svg)
+        content_hash = _svg_sha256(minified)
+        meta["content_hash"] = content_hash
+
+        # Deduplication: if we've seen this hash, compare quality
+        if content_hash in hash_map:
+            existing_id = hash_map[content_hash]
+            existing_meta = next(
+                (m for m in registry if m.get("id") == existing_id), None
+            )
+            if existing_meta is not None:
+                new_quality = _metadata_quality(meta)
+                old_quality = _metadata_quality(existing_meta)
+                if new_quality <= old_quality:
+                    print(
+                        f"  [DUP ] {rel}: duplicate of {existing_id} "
+                        f"(quality {new_quality} <= {old_quality}), skipping"
+                    )
+                    hashes.setdefault(content_hash, []).append(meta["id"])
+                    duplicates += 1
+                    continue
+                else:
+                    print(
+                        f"  [DUP+] {rel}: replacing {existing_id} "
+                        f"(quality {new_quality} > {old_quality})"
+                    )
+                    registry.remove(existing_meta)
+                    hashes.setdefault(content_hash, []).append(existing_id)
+                    hash_map[content_hash] = meta["id"]
+            else:
+                hash_map[content_hash] = meta["id"]
+        else:
+            hash_map[content_hash] = meta["id"]
+        hashes.setdefault(content_hash, [meta["id"]])
 
         conf = meta["classification"]["confidence"]
         conf_counts[conf] = conf_counts.get(conf, 0) + 1
@@ -1319,11 +1818,7 @@ def main() -> None:
         if not args.dry_run:
             target_dir.mkdir(parents=True, exist_ok=True)
 
-            # Write minified SVG (strips XML declaration, DOCTYPE, metadata bloat)
-            raw_svg = svg_path.read_text(encoding="utf-8", errors="replace")
-            (target_dir / (final_stem + ".svg")).write_text(
-                _minify_svg(raw_svg), encoding="utf-8"
-            )
+            (target_dir / (final_stem + ".svg")).write_text(minified, encoding="utf-8")
 
             # Write metadata JSON
             json_path = target_dir / (final_stem + ".json")
@@ -1344,6 +1839,7 @@ def main() -> None:
                     "generated_at":   generated_at,
                     "total_symbols":  len(registry),
                     "symbols":        registry,
+                    "hashes":         hashes,
                 },
                 fh,
                 indent=2,
@@ -1352,11 +1848,12 @@ def main() -> None:
 
     # Summary
     print(f"\n{'='*60}")
-    print(f"  Processed : {processed_count}")
-    print(f"  Errors    : {errors}")
-    print(f"  High conf : {conf_counts.get('high', 0)}")
-    print(f"  Low conf  : {conf_counts.get('low', 0)}")
-    print(f"  Unknown   : {conf_counts.get('none', 0)}")
+    print(f"  Processed  : {processed_count}")
+    print(f"  Duplicates : {duplicates}")
+    print(f"  Errors     : {errors}")
+    print(f"  High conf  : {conf_counts.get('high', 0)}")
+    print(f"  Low conf   : {conf_counts.get('low', 0)}")
+    print(f"  Unknown    : {conf_counts.get('none', 0)}")
     if not args.dry_run:
         print(f"  Output    : {PROCESSED_DIR}")
         print(f"  Registry  : {registry_path}")

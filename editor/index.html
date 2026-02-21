@@ -13,6 +13,10 @@
     Symbols
     <input id="sym-search" type="search" placeholder="Filter…">
   </div>
+  <div id="stats-bar">
+    <div id="stats-text">Loading…</div>
+    <div id="stats-progress"><div id="stats-fill"></div></div>
+  </div>
   <div id="sym-list"></div>
   <div id="sym-preview">
     <span id="sym-preview-hint">Hover to preview</span>
@@ -132,13 +136,34 @@
       <span class="field-label">Name</span>
       <input type="text" id="f-id" placeholder="corner-nw, left-inlet…">
     </div>
-    <div class="row">
-      <span class="field-label">X</span>
-      <input type="number" id="f-x" step="0.5">
+    <button class="btn btn-zone" id="btn-to-zone">Convert to Zone</button>
+    <div id="point-fields">
+      <div class="row">
+        <span class="field-label">X</span>
+        <input type="number" id="f-x" step="0.5">
+      </div>
+      <div class="row">
+        <span class="field-label">Y</span>
+        <input type="number" id="f-y" step="0.5">
+      </div>
     </div>
-    <div class="row">
-      <span class="field-label">Y</span>
-      <input type="number" id="f-y" step="0.5">
+    <div id="zone-fields" style="display:none">
+      <div class="row">
+        <span class="field-label">ZX</span>
+        <input type="number" id="f-zone-x" step="0.5">
+      </div>
+      <div class="row">
+        <span class="field-label">ZY</span>
+        <input type="number" id="f-zone-y" step="0.5">
+      </div>
+      <div class="row">
+        <span class="field-label">W</span>
+        <input type="number" id="f-zone-w" step="0.5" min="0.1">
+      </div>
+      <div class="row">
+        <span class="field-label">H</span>
+        <input type="number" id="f-zone-h" step="0.5" min="0.1">
+      </div>
     </div>
   </div>
 

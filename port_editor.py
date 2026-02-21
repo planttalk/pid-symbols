@@ -119,6 +119,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 self._error(f"Symbol not found: {rel}", 404); return
             self._json(result)
 
+        elif p == "/api/stats":
+            self._json(_compute_stats())
+
         else:
             self._error("Not found", 404)
 
@@ -155,6 +158,41 @@ def _safe_path(rel: str) -> pathlib.Path | None:
     return abs_path
 
 
+def _compute_stats() -> dict:
+    """Compute completion stats across all symbols."""
+    symbols = _list_symbols()
+    total = len(symbols)
+    completed = sum(1 for s in symbols if s.get("completed", False))
+
+    by_standard: dict[str, dict] = {}
+    by_category: dict[str, dict] = {}
+
+    for s in symbols:
+        std    = s.get("standard", "unknown") or "unknown"
+        cat    = s.get("category", "unknown") or "unknown"
+        is_done = bool(s.get("completed", False))
+
+        if std not in by_standard:
+            by_standard[std] = {"total": 0, "completed": 0}
+        by_standard[std]["total"] += 1
+        if is_done:
+            by_standard[std]["completed"] += 1
+
+        if cat not in by_category:
+            by_category[cat] = {"total": 0, "completed": 0}
+        by_category[cat]["total"] += 1
+        if is_done:
+            by_category[cat]["completed"] += 1
+
+    return {
+        "total":       total,
+        "completed":   completed,
+        "percentage":  round(completed / total * 100, 1) if total else 0.0,
+        "by_standard": by_standard,
+        "by_category": by_category,
+    }
+
+
 def _list_symbols() -> list[dict]:
     """Return symbol descriptors, using registry.json when available.
 
@@ -187,6 +225,17 @@ def _symbols_from_registry(registry: dict) -> list[dict]:
         if not json_path.exists():
             continue
         parts = sym_id.split("/")
+        # Support both 3-part (standard/category/stem) and 4-part (source/standard/category/stem) IDs
+        if len(parts) == 4:
+            std_from_id = parts[1]
+            cat_from_id = parts[2]
+        elif len(parts) == 3:
+            std_from_id = parts[0]
+            cat_from_id = parts[1]
+        else:
+            std_from_id = parts[0] if parts else ""
+            cat_from_id = parts[1] if len(parts) > 1 else ""
+
         completed = False
         try:
             sym_data  = json.loads(json_path.read_text(encoding="utf-8"))
@@ -196,8 +245,8 @@ def _symbols_from_registry(registry: dict) -> list[dict]:
         results.append({
             "path":      sym_id,
             "name":      sym.get("display_name") or (parts[-1] if parts else sym_id),
-            "standard":  sym.get("standard", parts[0] if parts else "").lower(),
-            "category":  sym.get("category", parts[1] if len(parts) > 1 else ""),
+            "standard":  sym.get("standard", std_from_id).lower(),
+            "category":  sym.get("category", cat_from_id),
             "completed": completed,
         })
     return results
@@ -292,19 +341,38 @@ def _generate_debug(rel: str | None, ports: list[dict]) -> tuple[bool, str]:
     for p in ports:
         pid   = str(p.get("id", "?"))
         ptype = str(p.get("type", pid))  # fall back to id for old single-field format
-        x, y  = p.get("x", 0), p.get("y", 0)
         col   = _port_color(ptype)
         disp  = pid                       # label shows the name, not the type
-        parts.append(
-            f'  <circle cx="{x}" cy="{y}" r="{r}" fill="{col}"'
-            f' stroke="white" stroke-width="{sw}" opacity="0.9"/>'
-        )
-        parts.append(
-            f'  <text x="{x + r + fsz * 0.25}" y="{y + fsz * 0.38}"'
-            f' font-size="{fsz}" fill="{col}" font-family="monospace"'
-            f' stroke="white" stroke-width="{tsw}" paint-order="stroke"'
-            f'>{disp}</text>'
-        )
+
+        zone = p.get("zone")
+        if zone:
+            zx, zy = zone.get("x", 0), zone.get("y", 0)
+            zw, zh = zone.get("width", 10), zone.get("height", 10)
+            parts.append(
+                f'  <rect x="{zx}" y="{zy}" width="{zw}" height="{zh}"'
+                f' fill="{col}" fill-opacity="0.2" stroke="{col}"'
+                f' stroke-width="{sw}" stroke-dasharray="{r*0.7} {r*0.35}"/>'
+            )
+            lx = zx + zw / 2
+            ly = zy + zh / 2 + fsz * 0.4
+            parts.append(
+                f'  <text x="{lx}" y="{ly}" font-size="{fsz}" fill="{col}"'
+                f' font-family="monospace" text-anchor="middle"'
+                f' stroke="white" stroke-width="{tsw}" paint-order="stroke"'
+                f'>{disp}</text>'
+            )
+        else:
+            x, y = p.get("x", 0), p.get("y", 0)
+            parts.append(
+                f'  <circle cx="{x}" cy="{y}" r="{r}" fill="{col}"'
+                f' stroke="white" stroke-width="{sw}" opacity="0.9"/>'
+            )
+            parts.append(
+                f'  <text x="{x + r + fsz * 0.25}" y="{y + fsz * 0.38}"'
+                f' font-size="{fsz}" fill="{col}" font-family="monospace"'
+                f' stroke="white" stroke-width="{tsw}" paint-order="stroke"'
+                f'>{disp}</text>'
+            )
     parts.append("</g>")
 
     overlay   = "\n".join(parts)

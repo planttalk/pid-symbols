@@ -39,6 +39,7 @@ let selection     = new Set();
 let selIdx        = null;     // primary selected port (drives field editor)
 
 let drag          = null;     // {idx} while dragging
+let zoneDrag      = null;     // {idx, mode:'move'|'nw'|'ne'|'sw'|'se', startPt, startZone} while zone-dragging
 let matchMode     = null;     // null | 'Y' | 'X'
 
 // Midpoint state machine:
@@ -222,6 +223,23 @@ async function loadSymbolList() {
   renderSymbolList(allSymbols);
 }
 
+async function loadStats() {
+  try {
+    const res  = await fetch('/api/stats');
+    if (!res.ok) return;
+    renderStats(await res.json());
+  } catch { /* silent */ }
+}
+
+function renderStats(data) {
+  const pct  = data.percentage ?? 0;
+  const done = data.completed ?? 0;
+  const tot  = data.total ?? 0;
+  document.getElementById('stats-text').textContent =
+    `${done} / ${tot} completed (${pct}%)`;
+  document.getElementById('stats-fill').style.width = pct + '%';
+}
+
 function filterSymbols() {
   const q = document.getElementById('sym-search').value.toLowerCase();
   renderSymbolList(
@@ -320,6 +338,14 @@ async function loadSymbol(relPath) {
     if (!p.type) {
       p.type = KNOWN_TYPES.has(p.id) ? p.id : 'reference';
     }
+    // Ensure zone ports don't have x/y and point ports don't have zone
+    if (p.zone) {
+      delete p.x;
+      delete p.y;
+    } else if (p.x === undefined) {
+      p.x = 0;
+      p.y = 0;
+    }
   });
 
   // Parse viewBox dimensions
@@ -405,6 +431,65 @@ function renderPorts() {
   ports.forEach((p, i) => {
     const col   = portColor(p.type);
     const isSel = selection.has(i);
+
+    // ── Zone port rendering ────────────────────────────────────────────────
+    if (p.zone) {
+      const z   = p.zone;
+      const zr  = document.createElementNS(NS, 'rect');
+      zr.setAttribute('x',            z.x);
+      zr.setAttribute('y',            z.y);
+      zr.setAttribute('width',        z.width);
+      zr.setAttribute('height',       z.height);
+      zr.setAttribute('fill',         col);
+      zr.setAttribute('fill-opacity', isSel ? '0.25' : '0.12');
+      zr.setAttribute('stroke',       col);
+      zr.setAttribute('stroke-width', portR * 0.18);
+      zr.setAttribute('stroke-dasharray', `${portR * 0.7} ${portR * 0.35}`);
+      zr.style.cursor = p.locked ? 'not-allowed' : 'move';
+      zr.addEventListener('mousedown', ev => onZoneDown(ev, i));
+      zr.addEventListener('contextmenu', ev => { ev.preventDefault(); ctxDelete(i); });
+      portLayer.appendChild(zr);
+
+      // Zone label
+      const zt = document.createElementNS(NS, 'text');
+      zt.setAttribute('x',           z.x + z.width / 2);
+      zt.setAttribute('y',           z.y + z.height / 2 + labelSz * 0.4);
+      zt.setAttribute('font-size',   labelSz);
+      zt.setAttribute('fill',        col);
+      zt.setAttribute('font-family', 'monospace');
+      zt.setAttribute('text-anchor', 'middle');
+      zt.setAttribute('pointer-events', 'none');
+      zt.setAttribute('stroke',      'white');
+      zt.setAttribute('stroke-width', labelSz * 0.12);
+      zt.setAttribute('paint-order', 'stroke');
+      zt.textContent = p.id;
+      portLayer.appendChild(zt);
+
+      // Resize handles (corners) when selected
+      if (isSel && !p.locked) {
+        const corners = [
+          { corner: 'nw', cx: z.x,            cy: z.y             },
+          { corner: 'ne', cx: z.x + z.width,  cy: z.y             },
+          { corner: 'sw', cx: z.x,            cy: z.y + z.height  },
+          { corner: 'se', cx: z.x + z.width,  cy: z.y + z.height  },
+        ];
+        for (const { corner, cx, cy } of corners) {
+          const h = document.createElementNS(NS, 'rect');
+          const hs = portR * 0.9;
+          h.setAttribute('x',      cx - hs / 2);
+          h.setAttribute('y',      cy - hs / 2);
+          h.setAttribute('width',  hs);
+          h.setAttribute('height', hs);
+          h.setAttribute('fill',   '#FFD700');
+          h.setAttribute('stroke', 'white');
+          h.setAttribute('stroke-width', portR * 0.1);
+          h.style.cursor = corner + '-resize';
+          h.addEventListener('mousedown', ev => { ev.stopPropagation(); onZoneHandleDown(ev, i, corner); });
+          portLayer.appendChild(h);
+        }
+      }
+      return;  // skip point rendering for zone ports
+    }
 
     // Selection halo
     if (isSel) {
@@ -505,10 +590,14 @@ function renderPortList() {
   ports.forEach((p, i) => {
     const row = document.createElement('div');
     row.className = 'port-row' + (selection.has(i) ? ' sel' : '') + (p.locked ? ' locked' : '');
+    const xyLabel = p.zone
+      ? `${p.zone.x.toFixed(1)},${p.zone.y.toFixed(1)} ${p.zone.width.toFixed(1)}×${p.zone.height.toFixed(1)}`
+      : `${p.x.toFixed(1)}, ${p.y.toFixed(1)}`;
+    const badge = p.zone ? '<span class="zone-badge">zone</span>' : '';
     row.innerHTML =
       `<span class="port-dot" style="background:${portColor(p.type)}"></span>` +
-      `<span class="port-name">${p.id}</span>` +
-      `<span class="port-xy">${p.x.toFixed(1)}, ${p.y.toFixed(1)}</span>`;
+      `<span class="port-name">${p.id}${badge}</span>` +
+      `<span class="port-xy">${xyLabel}</span>`;
     // Lock toggle — stopPropagation so it doesn't also trigger row selection
     const lockBtn = document.createElement('button');
     lockBtn.className = 'port-lock-btn' + (p.locked ? ' is-locked' : '');
@@ -586,23 +675,94 @@ function ctxDelete(idx) {
 // Field editor
 // ─────────────────────────────────────────────────────────────────────────────
 function populateFields(idx) {
-  const p = ports[idx];
-  document.getElementById('f-id').value    = p.id;
-  document.getElementById('f-x').value     = p.x;
-  document.getElementById('f-y').value     = p.y;
-  // Disable position fields for locked ports (ID rename is still allowed)
-  document.getElementById('f-x').disabled  = p.locked;
-  document.getElementById('f-y').disabled  = p.locked;
-  // Sync type grid to this port's type — don't trigger a port update (updatePort=false)
+  const p        = ports[idx];
+  const isZone   = !!p.zone;
+  const pointDiv = document.getElementById('point-fields');
+  const zoneDiv  = document.getElementById('zone-fields');
+  const toZoneBtn = document.getElementById('btn-to-zone');
+
+  document.getElementById('f-id').value = p.id;
   setActiveType(p.type, false);
+
+  if (isZone) {
+    pointDiv.style.display = 'none';
+    zoneDiv.style.display  = '';
+    if (toZoneBtn) toZoneBtn.textContent = 'Convert to Point';
+    document.getElementById('f-zone-x').value = p.zone.x;
+    document.getElementById('f-zone-y').value = p.zone.y;
+    document.getElementById('f-zone-w').value = p.zone.width;
+    document.getElementById('f-zone-h').value = p.zone.height;
+    ['f-zone-x','f-zone-y','f-zone-w','f-zone-h'].forEach(id =>
+      document.getElementById(id).disabled = p.locked
+    );
+  } else {
+    pointDiv.style.display = '';
+    zoneDiv.style.display  = 'none';
+    if (toZoneBtn) toZoneBtn.textContent = 'Convert to Zone';
+    document.getElementById('f-x').value    = p.x;
+    document.getElementById('f-y').value    = p.y;
+    document.getElementById('f-x').disabled = p.locked;
+    document.getElementById('f-y').disabled = p.locked;
+  }
 }
 
 function clearFields() {
   ['f-id', 'f-x', 'f-y'].forEach(id => {
     const el = document.getElementById(id);
-    el.value    = '';
-    el.disabled = false;
+    if (el) { el.value = ''; el.disabled = false; }
   });
+  ['f-zone-x','f-zone-y','f-zone-w','f-zone-h'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) { el.value = ''; el.disabled = false; }
+  });
+  const pointDiv = document.getElementById('point-fields');
+  const zoneDiv  = document.getElementById('zone-fields');
+  if (pointDiv) pointDiv.style.display = '';
+  if (zoneDiv)  zoneDiv.style.display  = 'none';
+  const toZoneBtn = document.getElementById('btn-to-zone');
+  if (toZoneBtn) toZoneBtn.textContent = 'Convert to Zone';
+}
+
+function convertToZone() {
+  if (selIdx === null) return;
+  const p = ports[selIdx];
+  if (p.zone) {
+    // Convert zone → point (use zone center)
+    const cx = +(p.zone.x + p.zone.width  / 2).toFixed(2);
+    const cy = +(p.zone.y + p.zone.height / 2).toFixed(2);
+    delete p.zone;
+    p.x = cx;
+    p.y = cy;
+  } else {
+    // Convert point → zone (use point as center, 20% of viewBox)
+    const zw = +(vw * 0.2).toFixed(2);
+    const zh = +(vh * 0.2).toFixed(2);
+    p.zone = {
+      x:      +(p.x - zw / 2).toFixed(2),
+      y:      +(p.y - zh / 2).toFixed(2),
+      width:  zw,
+      height: zh,
+    };
+    delete p.x;
+    delete p.y;
+  }
+  renderPorts();
+  renderPortList();
+  populateFields(selIdx);
+}
+
+function applyZoneFields() {
+  if (selIdx === null || !ports[selIdx].zone || ports[selIdx].locked) return;
+  const x = parseFloat(document.getElementById('f-zone-x').value);
+  const y = parseFloat(document.getElementById('f-zone-y').value);
+  const w = parseFloat(document.getElementById('f-zone-w').value);
+  const h = parseFloat(document.getElementById('f-zone-h').value);
+  if (!isNaN(x)) ports[selIdx].zone.x      = +x.toFixed(2);
+  if (!isNaN(y)) ports[selIdx].zone.y      = +y.toFixed(2);
+  if (!isNaN(w) && w > 0) ports[selIdx].zone.width  = +w.toFixed(2);
+  if (!isNaN(h) && h > 0) ports[selIdx].zone.height = +h.toFixed(2);
+  renderPorts();
+  renderPortList();
 }
 
 function applyId() {
@@ -656,7 +816,63 @@ function onPortDown(e, idx) {
   if (!ports[idx].locked) drag = { idx };  // locked ports: select only, no drag
 }
 
+function onZoneDown(ev, i) {
+  if (ev.button !== 0) return;
+  ev.preventDefault();
+  ev.stopPropagation();
+  if (midState !== null) { handleMidPortClick(i); return; }
+  selectPort(i);
+  if (!ports[i].locked) {
+    const pt = toSvgCoords(ev.clientX, ev.clientY);
+    zoneDrag = { idx: i, mode: 'move', startPt: pt, startZone: { ...ports[i].zone } };
+  }
+}
+
+function onZoneHandleDown(ev, i, corner) {
+  if (ev.button !== 0) return;
+  ev.preventDefault();
+  const pt = toSvgCoords(ev.clientX, ev.clientY);
+  zoneDrag = { idx: i, mode: corner, startPt: pt, startZone: { ...ports[i].zone } };
+}
+
 document.addEventListener('mousemove', e => {
+  if (zoneDrag) {
+    const pt  = toSvgCoords(e.clientX, e.clientY);
+    const dx  = pt.x - zoneDrag.startPt.x;
+    const dy  = pt.y - zoneDrag.startPt.y;
+    const sz  = zoneDrag.startZone;
+    const p   = ports[zoneDrag.idx];
+    const MIN = 2;
+
+    if (zoneDrag.mode === 'move') {
+      p.zone = { x: +(sz.x + dx).toFixed(2), y: +(sz.y + dy).toFixed(2), width: sz.width, height: sz.height };
+    } else if (zoneDrag.mode === 'nw') {
+      const newX = +(sz.x + dx).toFixed(2);
+      const newY = +(sz.y + dy).toFixed(2);
+      const newW = +(sz.width  - dx).toFixed(2);
+      const newH = +(sz.height - dy).toFixed(2);
+      if (newW >= MIN && newH >= MIN) p.zone = { x: newX, y: newY, width: newW, height: newH };
+    } else if (zoneDrag.mode === 'ne') {
+      const newY = +(sz.y + dy).toFixed(2);
+      const newW = +(sz.width  + dx).toFixed(2);
+      const newH = +(sz.height - dy).toFixed(2);
+      if (newW >= MIN && newH >= MIN) p.zone = { x: sz.x, y: newY, width: newW, height: newH };
+    } else if (zoneDrag.mode === 'sw') {
+      const newX = +(sz.x + dx).toFixed(2);
+      const newW = +(sz.width  - dx).toFixed(2);
+      const newH = +(sz.height + dy).toFixed(2);
+      if (newW >= MIN && newH >= MIN) p.zone = { x: newX, y: sz.y, width: newW, height: newH };
+    } else if (zoneDrag.mode === 'se') {
+      const newW = +(sz.width  + dx).toFixed(2);
+      const newH = +(sz.height + dy).toFixed(2);
+      if (newW >= MIN && newH >= MIN) p.zone = { x: sz.x, y: sz.y, width: newW, height: newH };
+    }
+    renderPorts();
+    renderPortList();
+    populateFields(zoneDrag.idx);
+    return;
+  }
+
   if (!drag) return;
   const pt   = toSvgCoords(e.clientX, e.clientY);
   const lock = document.querySelector('input[name=axis]:checked').value;
@@ -676,7 +892,10 @@ document.addEventListener('mousemove', e => {
 });
 
 document.addEventListener('mouseup', e => {
-  if (drag && e.button === 0) { drag = null; hideGuides(); }
+  if (e.button === 0) {
+    if (drag)     { drag = null; hideGuides(); }
+    if (zoneDrag) { zoneDrag = null; }
+  }
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1020,6 +1239,7 @@ async function toggleComplete() {
     showMsg({ err: '✗ Save failed' });
   } else {
     showMsg({ ok: newState ? '✓ Marked complete' : '✓ Marked incomplete' });
+    loadStats();
   }
 }
 
@@ -1029,7 +1249,21 @@ async function toggleComplete() {
 async function saveJSON(silent = false) {
   if (!currentPath || !symbolMeta) return false;
   symbolMeta.snap_points = ports.map(p => {
-    const sp = { id: p.id, type: p.type, x: +p.x.toFixed(2), y: +p.y.toFixed(2) };
+    let sp;
+    if (p.zone) {
+      sp = {
+        id:   p.id,
+        type: p.type,
+        zone: {
+          x:      +p.zone.x.toFixed(2),
+          y:      +p.zone.y.toFixed(2),
+          width:  +p.zone.width.toFixed(2),
+          height: +p.zone.height.toFixed(2),
+        },
+      };
+    } else {
+      sp = { id: p.id, type: p.type, x: +p.x.toFixed(2), y: +p.y.toFixed(2) };
+    }
     if (p.locked) sp.locked = true;
     return sp;
   });
@@ -1058,7 +1292,10 @@ async function generateDebug() {
       headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify({
         path:  currentPath,
-        ports: ports.map(p => ({ id: p.id, x: +p.x.toFixed(2), y: +p.y.toFixed(2) })),
+        ports: ports.map(p => p.zone
+          ? { id: p.id, type: p.type, zone: p.zone }
+          : { id: p.id, type: p.type, x: +p.x.toFixed(2), y: +p.y.toFixed(2) }
+        ),
       }),
     });
     showMsg(res.ok
@@ -1107,6 +1344,11 @@ document.getElementById('btn-match-x').addEventListener('click', () => toggleMat
 document.getElementById('f-id').addEventListener('input', applyId);
 document.getElementById('f-x').addEventListener('input',  applyXY);
 document.getElementById('f-y').addEventListener('input',  applyXY);
+document.getElementById('f-zone-x').addEventListener('input', applyZoneFields);
+document.getElementById('f-zone-y').addEventListener('input', applyZoneFields);
+document.getElementById('f-zone-w').addEventListener('input', applyZoneFields);
+document.getElementById('f-zone-h').addEventListener('input', applyZoneFields);
+document.getElementById('btn-to-zone').addEventListener('click', convertToZone);
 
 document.getElementById('btn-save').addEventListener('click',     () => saveJSON());
 document.getElementById('btn-next').addEventListener('click',     nextSymbol);
@@ -1118,3 +1360,4 @@ document.getElementById('btn-debug').addEventListener('click',    generateDebug)
 // ─────────────────────────────────────────────────────────────────────────────
 buildTypeGrid();
 loadSymbolList();
+loadStats();
