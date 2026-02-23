@@ -284,6 +284,12 @@ export default function AugmentTab() {
 
   const batchSources   = useMemo(() => [...new Set(allSymbols.map(s => s.source).filter(Boolean))].sort(), [allSymbols]);
   const batchStandards = useMemo(() => [...new Set(allSymbols.map(s => s.standard).filter(Boolean))].sort(), [allSymbols]);
+  const batchDefaultDir = useMemo(() => {
+    const parts = ['./augmented'];
+    if (batchSource)   parts.push(batchSource);
+    if (batchStandard) parts.push(batchStandard);
+    return parts.join('/');
+  }, [batchSource, batchStandard]);
   const batchMatchCount = useMemo(() => allSymbols.filter(s => {
     if (batchSource   && s.source   !== batchSource)   return false;
     if (batchStandard && s.standard !== batchStandard) return false;
@@ -351,7 +357,7 @@ export default function AugmentTab() {
           effects,
           size,
           count,
-          output_dir:          batchOutDir || outDir,
+          output_dir:          batchOutDir || batchDefaultDir,
           randomize_per_image: randPer,
         }),
       });
@@ -553,7 +559,7 @@ export default function AugmentTab() {
 
             <TextField
               fullWidth size="small"
-              placeholder={`output folder (default: ${outDir || './augmented'})`}
+              placeholder={`default: ${batchDefaultDir}`}
               value={batchOutDir} onChange={e => setBatchOutDir(e.target.value)}
               inputProps={{ style: { fontSize: 11 } }}
               sx={{ mb: 0.75 }}
