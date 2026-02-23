@@ -15,6 +15,7 @@ import { startMidpointMode, confirmMidpoint, cancelMidMode, refreshMidPreview } 
 import { toggleMatch, cancelMatch } from './match.js';
 import { loadSymbolList, filterSymbols, nextSymbol } from './symbols.js';
 import { saveJSON, toggleComplete, exportCompleted, generateDebug } from './api.js';
+import { initAugment, previewAugment } from './augment.js';
 import { state } from './state.js';
 import { setStatus } from './ui.js';
 import { toSvgCoords } from './canvas.js';
@@ -113,6 +114,20 @@ document.getElementById('btn-complete').addEventListener('click', toggleComplete
 document.getElementById('btn-debug').addEventListener('click',    generateDebug);
 document.getElementById('btn-export').addEventListener('click',   exportCompleted);
 
+// ── Tab switching ─────────────────────────────────────────────────────────────
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const tab = btn.dataset.tab;
+    document.querySelectorAll('.tab-btn').forEach(b =>
+      b.classList.toggle('active', b === btn)
+    );
+    document.getElementById('tab-ports').style.display  = tab === 'ports'   ? '' : 'none';
+    document.getElementById('tab-augment').style.display = tab === 'augment' ? '' : 'none';
+    if (tab === 'augment' && state.currentPath) previewAugment();
+  });
+});
+
 // ── Boot ─────────────────────────────────────────────────────────────────────
 buildTypeGrid();
+initAugment();
 loadSymbolList();

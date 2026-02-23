@@ -28,15 +28,24 @@ from .utils import (
 
 
 def export_completed_symbols(source_dir: Path, export_dir: Path, dry_run: bool) -> None:
-    """Copy completed symbols (JSON + SVG) from source_dir to export_dir."""
+    """Copy completed symbols (JSON + SVG) from source_dir to export_dir.
+
+    Only symbols with a 4-part id (origin/standard/category/stem) are exported
+    so the output always has a clean origin/standard/category/ folder structure.
+
+    The exported JSON has svg_path and metadata_path rewritten to be relative to
+    export_dir so the package is self-contained and not coupled to the original
+    processed/ tree.
+    """
     if not source_dir.is_dir():
         print(f"Error: source directory not found: {source_dir}")
         return
 
     json_files = sorted(source_dir.rglob("*.json"))
-    completed = 0
-    copied = 0
-    errors = 0
+    completed  = 0
+    copied     = 0
+    skipped    = 0
+    errors     = 0
     registry: list[dict] = []
 
     for json_path in json_files:
@@ -51,22 +60,39 @@ def export_completed_symbols(source_dir: Path, export_dir: Path, dry_run: bool) 
         if not meta.get("completed", False):
             continue
 
+        # Only export 4-part structure (origin/standard/category/stem)
+        sym_id = meta.get("id", "")
+        if sym_id.count("/") < 3:
+            skipped += 1
+            continue
+
         svg_path = json_path.with_suffix(".svg")
         if not svg_path.exists():
             errors += 1
             continue
 
-        rel = json_path.relative_to(source_dir)
+        # Destination mirrors the source tree under export_dir
+        rel         = json_path.relative_to(source_dir)
         target_json = export_dir / rel
-        target_svg = target_json.with_suffix(".svg")
+        target_svg  = target_json.with_suffix(".svg")
+
+        # Rewrite path fields so the exported JSON is self-contained.
+        # Paths are stored relative to export_dir (portable, no REPO_ROOT coupling).
+        rel_posix = rel.as_posix()
+        exported_meta = dict(meta)
+        exported_meta["svg_path"]      = rel.with_suffix(".svg").as_posix()
+        exported_meta["metadata_path"] = rel_posix
 
         completed += 1
         if not dry_run:
             target_json.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(json_path, target_json)
             shutil.copy2(svg_path, target_svg)
+            target_json.write_text(
+                json.dumps(exported_meta, indent=2, ensure_ascii=False) + "\n",
+                encoding="utf-8",
+            )
         copied += 1
-        registry.append(meta)
+        registry.append(exported_meta)
 
     if not dry_run:
         export_dir.mkdir(parents=True, exist_ok=True)
@@ -85,14 +111,16 @@ def export_completed_symbols(source_dir: Path, export_dir: Path, dry_run: bool) 
             )
 
     print(f"\n{'='*60}")
-    print(f"  Completed : {completed}")
-    print(f"  Copied    : {copied if not dry_run else 0}")
-    print(f"  Errors    : {errors}")
+    print(f"  Completed  : {completed}")
+    print(f"  Copied     : {copied if not dry_run else 0}")
+    if skipped:
+        print(f"  Skipped    : {skipped}  (legacy 3-part structure, not exported)")
+    print(f"  Errors     : {errors}")
     if dry_run:
         print("  [DRY RUN -- no files written]")
     else:
-        print(f"  Output    : {export_dir}")
-        print("  Registry  : registry.json")
+        print(f"  Output     : {export_dir}")
+        print("  Registry   : registry.json")
     print(f"{'='*60}")
 
 

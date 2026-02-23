@@ -1,7 +1,7 @@
 'use strict';
 
 /**
- * Central mutable state for the port editor.
+ * Central mutable state for Symbol Studio.
  * All modules import this object and access state via state.xxx.
  * Never destructure — always access as state.ports, state.selIdx, etc.
  * so mutations are visible across modules.

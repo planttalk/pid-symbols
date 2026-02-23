@@ -1,14 +1,16 @@
 #!/usr/bin/env python3
-"""port_editor.py — browser-based snap-point editor for P&ID SVG symbols.
+"""symbol_studio.py — browser-based symbol editor for P&ID SVG symbols.
 
-Starts a local HTTP server and opens the editor in the default browser.
+Covers snap-point editing, paper/scanning degradation preview, and
+augmented image generation. Starts a local HTTP server and opens the
+editor in the default browser.
 Static files are served from the editor/ directory next to this script.
 
 Usage
 -----
-    python port_editor.py                           # ./processed root, port 7421
-    python port_editor.py --symbols /path/to/syms
-    python port_editor.py --port 8080
+    python symbol_studio.py                           # ./processed root, port 7421
+    python symbol_studio.py --symbols /path/to/syms
+    python symbol_studio.py --port 8080
 """
 
 from __future__ import annotations
@@ -160,6 +162,20 @@ class Handler(http.server.BaseHTTPRequestHandler):
             out = body.get("output_dir", "").strip()
             result = _export_completed(out)
             self._json(result)
+
+        elif p == "/api/augment-preview":
+            result, err = _augment_preview(body)
+            if result is not None:
+                self._json(result)
+            else:
+                self._error(err, 500)
+
+        elif p == "/api/augment-generate":
+            result, err = _augment_generate(body)
+            if result is not None:
+                self._json(result)
+            else:
+                self._error(err, 500)
 
         else:
             self._error("Not found", 404)
@@ -417,19 +433,21 @@ def _generate_debug(rel: str | None, ports: list[dict]) -> tuple[bool, str]:
 def _export_completed(output_dir_str: str) -> dict:
     """Copy every completed symbol (SVG + JSON) from SYMBOLS_ROOT to output_dir.
 
+    Only 4-part id symbols are exported (origin/standard/category/stem) so the
+    output always has a clean origin/standard/category/ folder structure.
+    svg_path and metadata_path inside each JSON are rewritten to be relative to
+    output_dir so the package is self-contained.
+
     Returns a dict with keys: output_dir, copied, skipped, errors, message.
     """
     import shutil
 
-    if output_dir_str:
-        output_dir = pathlib.Path(output_dir_str)
-    else:
-        # Default: sibling of SYMBOLS_ROOT named "completed"
-        output_dir = SYMBOLS_ROOT.parent / "completed"
+    output_dir = (pathlib.Path(output_dir_str) if output_dir_str
+                  else SYMBOLS_ROOT.parent / "completed")
 
-    copied = 0
+    copied  = 0
     skipped = 0
-    errors = 0
+    errors  = 0
 
     for json_path in sorted(SYMBOLS_ROOT.rglob("*.json")):
         if json_path.name == "registry.json" or "_debug" in json_path.stem:
@@ -444,20 +462,34 @@ def _export_completed(output_dir_str: str) -> dict:
             skipped += 1
             continue
 
+        # Only export 4-part structure (origin/standard/category/stem)
+        if meta.get("id", "").count("/") < 3:
+            skipped += 1
+            continue
+
         svg_path = json_path.with_suffix(".svg")
         if not svg_path.exists():
             errors += 1
             continue
 
-        rel = json_path.relative_to(SYMBOLS_ROOT)
+        rel       = json_path.relative_to(SYMBOLS_ROOT)
         dest_json = output_dir / rel
         dest_svg  = dest_json.with_suffix(".svg")
+
+        # Rewrite path fields relative to output_dir (self-contained package)
+        exported_meta = dict(meta)
+        exported_meta["svg_path"]      = rel.with_suffix(".svg").as_posix()
+        exported_meta["metadata_path"] = rel.as_posix()
+
         try:
             dest_json.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(json_path, dest_json)
-            shutil.copy2(svg_path,  dest_svg)
+            shutil.copy2(svg_path, dest_svg)
+            dest_json.write_text(
+                json.dumps(exported_meta, indent=2, ensure_ascii=False) + "\n",
+                encoding="utf-8",
+            )
             copied += 1
-        except OSError as exc:
+        except OSError:
             errors += 1
 
     return {
@@ -467,6 +499,99 @@ def _export_completed(output_dir_str: str) -> dict:
         "errors":     errors,
         "message":    f"Exported {copied} symbol{'s' if copied != 1 else ''} to {output_dir}",
     }
+
+
+def _augment_preview(body: dict) -> tuple[dict | None, str]:
+    """Render SVG → PNG, apply degradation effects, return base64 PNG."""
+    import base64
+    import io as _io
+
+    rel     = body.get("path", "")
+    effects = {k: float(v) for k, v in body.get("effects", {}).items()}
+    size    = max(64, min(2048, int(body.get("size", 512))))
+
+    base = _safe_path(rel)
+    if base is None:
+        return None, "invalid path"
+    svg_path = base.with_suffix(".svg")
+    if not svg_path.exists():
+        return None, "SVG not found"
+
+    try:
+        import cairosvg
+        import numpy as np
+        from PIL import Image
+        from src.degradation import apply_effects
+
+        svg_text  = svg_path.read_text(encoding="utf-8")
+        png_bytes = cairosvg.svg2png(
+            bytestring=svg_text.encode("utf-8"),
+            output_width=size,
+            output_height=size,
+        )
+        img = Image.open(_io.BytesIO(png_bytes)).convert("RGB")
+        arr = np.array(img, dtype=np.uint8)
+        arr = apply_effects(arr, effects)
+        buf = _io.BytesIO()
+        Image.fromarray(arr).save(buf, format="PNG")
+        b64 = base64.b64encode(buf.getvalue()).decode("ascii")
+        return {"image": f"data:image/png;base64,{b64}"}, ""
+    except Exception as exc:
+        return None, str(exc)
+
+
+def _augment_generate(body: dict) -> tuple[dict | None, str]:
+    """Generate count augmented PNG variants with randomized intensities."""
+    import io as _io
+    import random as _random
+
+    rel        = body.get("path", "")
+    effects    = {k: float(v) for k, v in body.get("effects", {}).items()}
+    count      = max(1, min(500, int(body.get("count", 5))))
+    size       = max(64, min(2048, int(body.get("size", 512))))
+    output_dir = (body.get("output_dir") or "").strip() or "./augmented"
+
+    base = _safe_path(rel)
+    if base is None:
+        return None, "invalid path"
+    svg_path = base.with_suffix(".svg")
+    if not svg_path.exists():
+        return None, "SVG not found"
+
+    try:
+        import cairosvg
+        import numpy as np
+        from PIL import Image
+        from src.degradation import apply_effects
+
+        out_dir = pathlib.Path(output_dir)
+        out_dir.mkdir(parents=True, exist_ok=True)
+
+        svg_text  = svg_path.read_text(encoding="utf-8")
+        png_bytes = cairosvg.svg2png(
+            bytestring=svg_text.encode("utf-8"),
+            output_width=size,
+            output_height=size,
+        )
+        base_arr = np.array(Image.open(_io.BytesIO(png_bytes)).convert("RGB"),
+                            dtype=np.uint8)
+        stem = base.stem
+
+        for i in range(count):
+            # Vary each active effect's intensity ±30 % to create variety
+            varied: dict[str, float] = {}
+            for name, intensity in effects.items():
+                if intensity > 0.0:
+                    varied[name] = float(
+                        np.clip(intensity * _random.uniform(0.7, 1.3), 0.0, 1.0)
+                    )
+            arr   = apply_effects(base_arr.copy(), varied)
+            fname = out_dir / f"{stem}_aug_{i + 1:04d}.png"
+            Image.fromarray(arr).save(fname)
+
+        return {"saved": count, "output_dir": str(out_dir.resolve())}, ""
+    except Exception as exc:
+        return None, str(exc)
 
 
 # ── entry point ────────────────────────────────────────────────────────────────
@@ -502,7 +627,7 @@ def main(argv: list[str] | None = None) -> None:
     url    = f"http://127.0.0.1:{SERVER_PORT}"
     server = http.server.HTTPServer(("127.0.0.1", SERVER_PORT), Handler)
 
-    print(f"Port Editor  →  {url}")
+    print(f"Symbol Studio  →  {url}")
     print(f"Symbols root →  {SYMBOLS_ROOT}")
     print(f"Editor dir   →  {EDITOR_DIR}")
     print("Press Ctrl+C to stop.")

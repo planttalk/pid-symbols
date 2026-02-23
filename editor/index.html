@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8"/>
-  <title>Port Editor</title>
+  <title>Symbol Studio</title>
   <link rel="stylesheet" href="style.css"/>
 </head>
 <body>
@@ -75,116 +75,165 @@
 <!-- ── RIGHT: controls ───────────────────────────────────────────────── -->
 <div id="right">
 
-  <h3>Symbol</h3>
-  <div id="sym-info">—</div>
-
-  <hr/>
-  <h3>Port Type</h3>
-  <div id="type-grid"></div>
-
-  <hr/>
-  <h3>Port Marker</h3>
-  <div class="row"><label><input type="radio" name="marker" value="crosshair" checked> Crosshair</label></div>
-  <div class="row"><label><input type="radio" name="marker" value="dot"> Center dot</label></div>
-  <div class="row"><label><input type="radio" name="marker" value="none"> None</label></div>
-
-  <hr/>
-  <h3>Grid</h3>
-  <div class="row">
-    <label><input type="checkbox" id="show-grid"> Show Grid</label>
-  </div>
-  <div class="row">
-    <label><input type="checkbox" id="snap-grid"> Snap to Grid</label>
-  </div>
-  <div class="row">
-    <label>Size
-      <input type="number" id="grid-size" value="10" min="1" max="200">
-    </label>
+  <!-- tab bar -->
+  <div id="right-tabs">
+    <button class="tab-btn active" data-tab="ports">Ports</button>
+    <button class="tab-btn" data-tab="augment">Augment</button>
   </div>
 
-  <hr/>
-  <h3>Axis Lock</h3>
-  <div class="row">
-    <label><input type="radio" name="axis" value="FREE" checked> Free</label>
-  </div>
-  <div class="row">
-    <label>
-      <input type="radio" name="axis" value="LOCK_X">
-      Lock X &mdash; vertical only
-    </label>
-  </div>
-  <div class="row">
-    <label>
-      <input type="radio" name="axis" value="LOCK_Y">
-      Lock Y &mdash; horizontal only
-    </label>
-  </div>
+  <!-- ── PORTS TAB ──────────────────────────────────────────────────── -->
+  <div id="tab-ports">
 
-  <hr/>
-  <h3>Ports</h3>
-  <div id="port-list"></div>
+    <h3>Symbol</h3>
+    <div id="sym-info">—</div>
 
-  <div id="port-actions">
-    <button class="btn" id="btn-add">+ Add</button>
-    <button class="btn btn-mid" id="btn-mid" disabled>&#x2295; Midpoint</button>
-    <button class="btn btn-danger" id="btn-del" disabled>&#x2715; Delete</button>
-  </div>
-  <div id="match-actions">
-    <button class="btn btn-match" id="btn-match-y" disabled>Match Y</button>
-    <button class="btn btn-match" id="btn-match-x" disabled>Match X</button>
-  </div>
+    <hr/>
+    <h3>Port Type</h3>
+    <div id="type-grid"></div>
 
-  <!-- per-port field editor -->
-  <div id="field-editor">
+    <hr/>
+    <h3>Port Marker</h3>
+    <div class="row"><label><input type="radio" name="marker" value="crosshair" checked> Crosshair</label></div>
+    <div class="row"><label><input type="radio" name="marker" value="dot"> Center dot</label></div>
+    <div class="row"><label><input type="radio" name="marker" value="none"> None</label></div>
+
+    <hr/>
+    <h3>Grid</h3>
     <div class="row">
-      <span class="field-label">Name</span>
-      <input type="text" id="f-id" placeholder="corner-nw, left-inlet…">
+      <label><input type="checkbox" id="show-grid"> Show Grid</label>
     </div>
-    <button class="btn btn-zone" id="btn-to-zone">Convert to Zone</button>
-    <div id="point-fields">
-      <div class="row">
-        <span class="field-label">X</span>
-        <input type="number" id="f-x" step="0.5">
-      </div>
-      <div class="row">
-        <span class="field-label">Y</span>
-        <input type="number" id="f-y" step="0.5">
-      </div>
+    <div class="row">
+      <label><input type="checkbox" id="snap-grid"> Snap to Grid</label>
     </div>
-    <div id="zone-fields" style="display:none">
-      <div class="row">
-        <span class="field-label">ZX</span>
-        <input type="number" id="f-zone-x" step="0.5">
-      </div>
-      <div class="row">
-        <span class="field-label">ZY</span>
-        <input type="number" id="f-zone-y" step="0.5">
-      </div>
-      <div class="row">
-        <span class="field-label">W</span>
-        <input type="number" id="f-zone-w" step="0.5" min="0.1">
-      </div>
-      <div class="row">
-        <span class="field-label">H</span>
-        <input type="number" id="f-zone-h" step="0.5" min="0.1">
-      </div>
+    <div class="row">
+      <label>Size
+        <input type="number" id="grid-size" value="10" min="1" max="200">
+      </label>
     </div>
-  </div>
 
-  <hr/>
-  <button class="btn btn-save" id="btn-save">&#x1F4BE; Save JSON</button>
-  <button class="btn btn-next" id="btn-next" disabled>&#x1F4BE; Save &amp; Next &#x2192;</button>
-  <div id="save-msg"></div>
-  <button class="btn btn-complete" id="btn-complete" disabled>&#x2713; Mark Complete</button>
-  <button class="btn btn-debug" id="btn-debug">&#x1F50D; Generate _debug.svg</button>
+    <hr/>
+    <h3>Axis Lock</h3>
+    <div class="row">
+      <label><input type="radio" name="axis" value="FREE" checked> Free</label>
+    </div>
+    <div class="row">
+      <label>
+        <input type="radio" name="axis" value="LOCK_X">
+        Lock X &mdash; vertical only
+      </label>
+    </div>
+    <div class="row">
+      <label>
+        <input type="radio" name="axis" value="LOCK_Y">
+        Lock Y &mdash; horizontal only
+      </label>
+    </div>
 
-  <hr/>
-  <h3>Export</h3>
-  <div class="row">
-    <input type="text" id="export-dir" placeholder="output folder (default: ./completed)">
-  </div>
-  <button class="btn btn-export" id="btn-export">&#x1F4E4; Export Completed</button>
-  <div id="export-msg"></div>
+    <hr/>
+    <h3>Ports</h3>
+    <div id="port-list"></div>
+
+    <div id="port-actions">
+      <button class="btn" id="btn-add">+ Add</button>
+      <button class="btn btn-mid" id="btn-mid" disabled>&#x2295; Midpoint</button>
+      <button class="btn btn-danger" id="btn-del" disabled>&#x2715; Delete</button>
+    </div>
+    <div id="match-actions">
+      <button class="btn btn-match" id="btn-match-y" disabled>Match Y</button>
+      <button class="btn btn-match" id="btn-match-x" disabled>Match X</button>
+    </div>
+
+    <!-- per-port field editor -->
+    <div id="field-editor">
+      <div class="row">
+        <span class="field-label">Name</span>
+        <input type="text" id="f-id" placeholder="corner-nw, left-inlet…">
+      </div>
+      <button class="btn btn-zone" id="btn-to-zone">Convert to Zone</button>
+      <div id="point-fields">
+        <div class="row">
+          <span class="field-label">X</span>
+          <input type="number" id="f-x" step="0.5">
+        </div>
+        <div class="row">
+          <span class="field-label">Y</span>
+          <input type="number" id="f-y" step="0.5">
+        </div>
+      </div>
+      <div id="zone-fields" style="display:none">
+        <div class="row">
+          <span class="field-label">ZX</span>
+          <input type="number" id="f-zone-x" step="0.5">
+        </div>
+        <div class="row">
+          <span class="field-label">ZY</span>
+          <input type="number" id="f-zone-y" step="0.5">
+        </div>
+        <div class="row">
+          <span class="field-label">W</span>
+          <input type="number" id="f-zone-w" step="0.5" min="0.1">
+        </div>
+        <div class="row">
+          <span class="field-label">H</span>
+          <input type="number" id="f-zone-h" step="0.5" min="0.1">
+        </div>
+      </div>
+    </div>
+
+    <hr/>
+    <button class="btn btn-save" id="btn-save">&#x1F4BE; Save JSON</button>
+    <button class="btn btn-next" id="btn-next" disabled>&#x1F4BE; Save &amp; Next &#x2192;</button>
+    <div id="save-msg"></div>
+    <button class="btn btn-complete" id="btn-complete" disabled>&#x2713; Mark Complete</button>
+    <button class="btn btn-debug" id="btn-debug">&#x1F50D; Generate _debug.svg</button>
+
+    <hr/>
+    <h3>Export</h3>
+    <div class="row">
+      <input type="text" id="export-dir" placeholder="output folder (default: ./completed)">
+    </div>
+    <button class="btn btn-export" id="btn-export">&#x1F4E4; Export Completed</button>
+    <div id="export-msg"></div>
+
+  </div><!-- #tab-ports -->
+
+  <!-- ── AUGMENT TAB ────────────────────────────────────────────────── -->
+  <div id="tab-augment" style="display:none">
+
+    <div id="augment-preview-area">
+      <div id="augment-preview-hint">Select a symbol, then click Preview</div>
+      <img id="augment-preview-img" alt="" style="display:none">
+    </div>
+
+    <div id="augment-controls">
+      <div class="aug-top-row">
+        <button class="btn btn-augment-preview" id="btn-augment-preview">&#x1F441; Preview</button>
+        <button class="btn btn-augment-random"  id="btn-augment-random">&#x1F3B2; Randomize</button>
+      </div>
+      <div class="row" style="margin-top:6px">
+        <span class="field-label">Size</span>
+        <input type="number" id="augment-size" value="512" min="64" max="2048" step="64">
+        <span style="font-size:10px;color:#888">px</span>
+      </div>
+
+      <div id="augment-effects"></div>
+
+      <hr/>
+      <div class="row">
+        <span class="field-label">Count</span>
+        <input type="number" id="augment-count" value="5" min="1" max="500">
+      </div>
+      <div class="row">
+        <input type="text" id="augment-output-dir"
+               placeholder="output folder (default: ./augmented)">
+      </div>
+      <button class="btn btn-augment-generate" id="btn-augment-generate">
+        &#x1F4BE; Generate Images
+      </button>
+      <div id="augment-msg"></div>
+    </div>
+
+  </div><!-- #tab-augment -->
 
 </div>
 

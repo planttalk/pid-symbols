@@ -58,6 +58,7 @@ coverage.html
 # Generated output and completed symbols
 processed/
 completed/
+exported/
 
 # Augmented symbols
 *-augmented/

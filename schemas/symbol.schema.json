@@ -153,7 +153,7 @@
     },
     "completed": {
       "type": "boolean",
-      "description": "Set by the port editor when all snap points have been reviewed."
+      "description": "Set by Symbol Studio when all snap points have been reviewed."
     },
     "content_hash": {
       "type": "string",
