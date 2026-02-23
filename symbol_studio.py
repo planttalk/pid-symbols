@@ -28,7 +28,9 @@ import webbrowser
 # ── globals set in main() ─────────────────────────────────────────────────────
 SYMBOLS_ROOT: pathlib.Path
 SERVER_PORT: int
-EDITOR_DIR = pathlib.Path(__file__).parent / "editor"
+_EDITOR_ROOT = pathlib.Path(__file__).parent / "editor"
+# Serve from editor/dist/ (React build) when available, otherwise editor/ (legacy)
+EDITOR_DIR = _EDITOR_ROOT / "dist" if (_EDITOR_ROOT / "dist").is_dir() else _EDITOR_ROOT
 
 # ── port colour map (shared by _generate_debug) ───────────────────────────────
 _PORT_COLORS: dict[str, str] = {
@@ -518,18 +520,17 @@ def _augment_preview(body: dict) -> tuple[dict | None, str]:
         return None, "SVG not found"
 
     try:
-        import cairosvg
         import numpy as np
         from PIL import Image
         from src.degradation import apply_effects
+        from src.svg_utils import _render_svg_to_png
 
-        svg_text  = svg_path.read_text(encoding="utf-8")
-        png_bytes = cairosvg.svg2png(
-            bytestring=svg_text.encode("utf-8"),
-            output_width=size,
-            output_height=size,
-        )
+        # Render at intrinsic SVG dimensions (same as the YOLO pipeline) so
+        # that the symbol geometry is correct, then resize to the target size.
+        png_bytes = _render_svg_to_png(svg_path)
         img = Image.open(_io.BytesIO(png_bytes)).convert("RGB")
+        if img.width != size or img.height != size:
+            img = img.resize((size, size), Image.LANCZOS)
         arr = np.array(img, dtype=np.uint8)
         arr = apply_effects(arr, effects)
         buf = _io.BytesIO()
@@ -541,15 +542,26 @@ def _augment_preview(body: dict) -> tuple[dict | None, str]:
 
 
 def _augment_generate(body: dict) -> tuple[dict | None, str]:
-    """Generate count augmented PNG variants with randomized intensities."""
+    """Generate count augmented PNG variants.
+
+    Parameters (from JSON body)
+    ---------------------------
+    randomize_per_image : bool  — if True each image gets independent random effects
+                                  from the full catalogue; if False the supplied
+                                  effects are varied ±30 % per image.
+    return_images       : bool  — if True include base64 PNGs in the response.
+    """
+    import base64
     import io as _io
     import random as _random
 
-    rel        = body.get("path", "")
-    effects    = {k: float(v) for k, v in body.get("effects", {}).items()}
-    count      = max(1, min(500, int(body.get("count", 5))))
-    size       = max(64, min(2048, int(body.get("size", 512))))
-    output_dir = (body.get("output_dir") or "").strip() or "./augmented"
+    rel              = body.get("path", "")
+    effects          = {k: float(v) for k, v in body.get("effects", {}).items()}
+    count            = max(1, min(100, int(body.get("count", 5))))
+    size             = max(64, min(2048, int(body.get("size", 512))))
+    output_dir       = (body.get("output_dir") or "").strip() or "./augmented"
+    randomize_per    = bool(body.get("randomize_per_image", False))
+    return_images    = bool(body.get("return_images", False))
 
     base = _safe_path(rel)
     if base is None:
@@ -562,7 +574,7 @@ def _augment_generate(body: dict) -> tuple[dict | None, str]:
         import cairosvg
         import numpy as np
         from PIL import Image
-        from src.degradation import apply_effects
+        from src.degradation import apply_effects, _APPLY_ORDER
 
         out_dir = pathlib.Path(output_dir)
         out_dir.mkdir(parents=True, exist_ok=True)
@@ -573,23 +585,40 @@ def _augment_generate(body: dict) -> tuple[dict | None, str]:
             output_width=size,
             output_height=size,
         )
-        base_arr = np.array(Image.open(_io.BytesIO(png_bytes)).convert("RGB"),
-                            dtype=np.uint8)
-        stem = base.stem
+        base_arr = np.array(
+            Image.open(_io.BytesIO(png_bytes)).convert("RGB"), dtype=np.uint8
+        )
+        stem       = base.stem
+        images_b64 = []
 
         for i in range(count):
-            # Vary each active effect's intensity ±30 % to create variety
-            varied: dict[str, float] = {}
-            for name, intensity in effects.items():
-                if intensity > 0.0:
-                    varied[name] = float(
-                        np.clip(intensity * _random.uniform(0.7, 1.3), 0.0, 1.0)
-                    )
+            if randomize_per:
+                # Each image: independent random subset of ALL effects
+                n      = _random.randint(3, 7)
+                picked = _random.sample(_APPLY_ORDER, min(n, len(_APPLY_ORDER)))
+                varied = {name: round(_random.uniform(0.2, 0.9), 2) for name in picked}
+            else:
+                # Vary the supplied effects ±30 %
+                varied = {
+                    name: float(np.clip(intensity * _random.uniform(0.7, 1.3), 0.0, 1.0))
+                    for name, intensity in effects.items()
+                    if intensity > 0.0
+                }
+
             arr   = apply_effects(base_arr.copy(), varied)
             fname = out_dir / f"{stem}_aug_{i + 1:04d}.png"
             Image.fromarray(arr).save(fname)
 
-        return {"saved": count, "output_dir": str(out_dir.resolve())}, ""
+            if return_images:
+                buf = _io.BytesIO()
+                Image.fromarray(arr).save(buf, format="PNG")
+                b64 = base64.b64encode(buf.getvalue()).decode("ascii")
+                images_b64.append(f"data:image/png;base64,{b64}")
+
+        result: dict = {"saved": count, "output_dir": str(out_dir.resolve())}
+        if return_images:
+            result["images"] = images_b64
+        return result, ""
     except Exception as exc:
         return None, str(exc)
 
