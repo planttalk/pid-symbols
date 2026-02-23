@@ -65,6 +65,22 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
     # ── low-level send helpers ─────────────────────────────────────────────────
 
+    def _sse_stream(self, gen) -> None:
+        """Send an SSE response, pushing each dict yielded by *gen* as an event."""
+        self.send_response(200)
+        self.send_header("Content-Type", "text/event-stream; charset=utf-8")
+        self.send_header("Cache-Control", "no-cache")
+        self.send_header("X-Accel-Buffering", "no")
+        self.end_headers()
+        try:
+            for event in gen:
+                self.wfile.write(
+                    f"data: {json.dumps(event, ensure_ascii=False)}\n\n".encode("utf-8")
+                )
+                self.wfile.flush()
+        except (BrokenPipeError, ConnectionResetError):
+            pass
+
     def _send(self, body: str | bytes,
               ctype: str = "text/html; charset=utf-8",
               status: int = 200) -> None:
@@ -178,6 +194,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 self._json(result)
             else:
                 self._error(err, 500)
+
+        elif p == "/api/augment-batch":
+            self._sse_stream(_augment_batch(body))
 
         else:
             self._error("Not found", 404)
@@ -650,6 +669,115 @@ def _augment_generate(body: dict) -> tuple[dict | None, str]:
         return None, str(exc)
 
 
+def _augment_batch(body: dict):
+    """Generator: yields SSE progress events while augmenting a filtered symbol set.
+
+    Emitted event shapes
+    --------------------
+    {"type": "start",    "total": N}
+    {"type": "progress", "current": i, "total": N, "name": str,
+                         "status": "ok"|"skipped"|"error", "saved": cumulative}
+    {"type": "done",     "processed": N, "saved": N, "skipped": N,
+                         "errors": N, "output_dir": str}
+    """
+    import io as _io
+    import base64
+    import random as _random
+
+    source    = body.get("source",   "").strip()
+    standard  = body.get("standard", "").strip()
+    effects   = {k: float(v) for k, v in body.get("effects", {}).items()}
+    size      = max(64, min(2048, int(body.get("size",  512))))
+    count     = max(1,  min(200,  int(body.get("count", 1))))
+    out_str   = (body.get("output_dir") or "").strip() or "./augmented"
+    rand_per  = bool(body.get("randomize_per_image", False))
+
+    symbols = _list_symbols()
+    if source:   symbols = [s for s in symbols if s["source"]   == source]
+    if standard: symbols = [s for s in symbols if s["standard"] == standard]
+    total = len(symbols)
+
+    if total == 0:
+        yield {"type": "done", "processed": 0, "saved": 0,
+               "skipped": 0, "errors": 0, "output_dir": out_str}
+        return
+
+    yield {"type": "start", "total": total}
+
+    try:
+        import numpy as np
+        from PIL import Image
+        from src.degradation import apply_effects, _APPLY_ORDER
+        from src.svg_utils import _render_svg_to_png
+    except Exception as exc:
+        yield {"type": "done", "processed": 0, "saved": 0, "skipped": total,
+               "errors": 1, "output_dir": out_str, "error": str(exc)}
+        return
+
+    out_dir = pathlib.Path(out_str)
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    processed = saved = skipped = errors = 0
+
+    for i, sym in enumerate(symbols):
+        sym_id = sym["path"]
+        base   = _safe_path(sym_id)
+        name   = sym.get("name", sym_id)
+
+        if base is None:
+            errors += 1
+            yield {"type": "progress", "current": i + 1, "total": total,
+                   "name": name, "status": "error", "saved": saved}
+            continue
+
+        svg_path = base.with_suffix(".svg")
+        if not svg_path.exists():
+            skipped += 1
+            yield {"type": "progress", "current": i + 1, "total": total,
+                   "name": name, "status": "skipped", "saved": saved}
+            continue
+
+        try:
+            png_bytes = _render_svg_to_png(svg_path)
+            img = Image.open(_io.BytesIO(png_bytes)).convert("RGB")
+            if img.width != size or img.height != size:
+                img = img.resize((size, size), Image.LANCZOS)
+            arr = np.array(img, dtype=np.uint8)
+
+            # Use slugified sym_id as filename prefix to avoid collisions
+            stem = sym_id.replace("/", "_")
+            for j in range(count):
+                if rand_per:
+                    n      = _random.randint(3, 7)
+                    picked = _random.sample(_APPLY_ORDER, min(n, len(_APPLY_ORDER)))
+                    varied = {nm: round(_random.uniform(0.2, 0.9), 2) for nm in picked}
+                elif effects:
+                    varied = {
+                        nm: float(np.clip(intensity * _random.uniform(0.7, 1.3), 0.0, 1.0))
+                        for nm, intensity in effects.items() if intensity > 0.0
+                    }
+                else:
+                    varied = {}
+
+                out = apply_effects(arr.copy(), varied)
+                Image.fromarray(out).save(out_dir / f"{stem}_aug_{j + 1:04d}.png")
+                saved += 1
+
+            processed += 1
+            yield {"type": "progress", "current": i + 1, "total": total,
+                   "name": name, "status": "ok", "saved": saved}
+
+        except Exception as exc:
+            errors += 1
+            yield {"type": "progress", "current": i + 1, "total": total,
+                   "name": name, "status": "error", "saved": saved,
+                   "error": str(exc)}
+
+    yield {"type": "done", "processed": processed, "saved": saved,
+           "skipped": skipped, "errors": errors,
+           "output_dir": str(out_dir.resolve())}
+
+
 # ── entry point ────────────────────────────────────────────────────────────────
 
 def main(argv: list[str] | None = None) -> None:
@@ -681,7 +809,7 @@ def main(argv: list[str] | None = None) -> None:
         return
 
     url    = f"http://127.0.0.1:{SERVER_PORT}"
-    server = http.server.HTTPServer(("127.0.0.1", SERVER_PORT), Handler)
+    server = http.server.ThreadingHTTPServer(("127.0.0.1", SERVER_PORT), Handler)
 
     print(f"Symbol Studio  →  {url}")
     print(f"Symbols root →  {SYMBOLS_ROOT}")

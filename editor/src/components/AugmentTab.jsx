@@ -1,9 +1,10 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useMemo } from 'react';
 import {
   Box, Typography, Button, Slider, Checkbox, FormControlLabel,
   TextField, Stack, Accordion, AccordionSummary, AccordionDetails,
   Alert, CircularProgress, Switch, ImageList, ImageListItem,
   ImageListItemBar, Divider, IconButton, Modal,
+  Select, MenuItem, FormControl, LinearProgress,
 } from '@mui/material';
 import ExpandMoreIcon       from '@mui/icons-material/ExpandMore';
 import ShuffleIcon          from '@mui/icons-material/Shuffle';
@@ -259,6 +260,7 @@ function SmartGrid({ images, label }) {
 export default function AugmentTab() {
   const {
     currentPath, augEffects, augSize, augCount, augOutputDir, augRandomizePerImg,
+    allSymbols,
     setAugEffect, removeAugEffect, setAugImages,
   } = useEditorStore();
 
@@ -272,7 +274,23 @@ export default function AugmentTab() {
   const [imagesLabel, setImagesLabel] = useState('');
   const [msg,        setMsg]        = useState(null);
 
-  const busy = previewing || saving;
+  // ── Batch state ──────────────────────────────────────────────────────────────
+  const [batchSource,   setBatchSource]   = useState('');
+  const [batchStandard, setBatchStandard] = useState('');
+  const [batchOutDir,   setBatchOutDir]   = useState('');
+  const [batchRunning,  setBatchRunning]  = useState(false);
+  const [batchProgress, setBatchProgress] = useState(null); // {current,total,name,saved}
+  const [batchResult,   setBatchResult]   = useState(null); // {processed,saved,skipped,errors,...}
+
+  const batchSources   = useMemo(() => [...new Set(allSymbols.map(s => s.source).filter(Boolean))].sort(), [allSymbols]);
+  const batchStandards = useMemo(() => [...new Set(allSymbols.map(s => s.standard).filter(Boolean))].sort(), [allSymbols]);
+  const batchMatchCount = useMemo(() => allSymbols.filter(s => {
+    if (batchSource   && s.source   !== batchSource)   return false;
+    if (batchStandard && s.standard !== batchStandard) return false;
+    return true;
+  }).length, [allSymbols, batchSource, batchStandard]);
+
+  const busy = previewing || saving || batchRunning;
 
   const handleToggle = useCallback((name, enabled) => {
     if (enabled) setAugEffect(name, 0.5);
@@ -318,6 +336,55 @@ export default function AugmentTab() {
       setPreviewing(false);
     }
   }, [currentPath, size, count, randPer]);
+
+  const handleBatch = useCallback(async () => {
+    setBatchRunning(true);
+    setBatchProgress(null);
+    setBatchResult(null);
+    try {
+      const { augEffects: effects } = useEditorStore.getState();
+      const res = await fetch('/api/augment-batch', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          source:              batchSource,
+          standard:            batchStandard,
+          effects,
+          size,
+          count,
+          output_dir:          batchOutDir || outDir,
+          randomize_per_image: randPer,
+        }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+
+      const reader  = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const parts = buffer.split('\n\n');
+        buffer = parts.pop(); // keep last incomplete chunk
+        for (const part of parts) {
+          const line = part.trim();
+          if (!line.startsWith('data: ')) continue;
+          const event = JSON.parse(line.slice(6));
+          if (event.type === 'progress') {
+            setBatchProgress({ current: event.current, total: event.total, name: event.name, saved: event.saved });
+          }
+          if (event.type === 'done') {
+            setBatchResult(event);
+          }
+        }
+      }
+    } catch (e) {
+      setBatchResult({ error: e.message });
+    } finally {
+      setBatchRunning(false);
+    }
+  }, [batchSource, batchStandard, batchOutDir, outDir, size, count, randPer]);
 
   const handleGenerate = useCallback(async () => {
     if (!currentPath) return;
@@ -437,8 +504,110 @@ export default function AugmentTab() {
           </Alert>
         )}
 
-        {/* Results */}
-        {busy ? (
+        <Divider sx={{ my: 1 }} />
+
+        {/* ── Batch section ─────────────────────────────────────────────────── */}
+        <Accordion disableGutters defaultExpanded={false}>
+          <AccordionSummary expandIcon={<ExpandMoreIcon sx={{ fontSize: 14 }} />}>
+            <Typography sx={{ fontSize: 11, color: 'secondary.main' }}>Batch Augmentation</Typography>
+            {(batchSource || batchStandard) && (
+              <Typography sx={{ fontSize: 10, color: '#4ec9b0', ml: 1 }}>
+                ({batchMatchCount} symbol{batchMatchCount !== 1 ? 's' : ''})
+              </Typography>
+            )}
+          </AccordionSummary>
+          <AccordionDetails sx={{ px: 1, pb: 1, pt: 0.5 }}>
+
+            <FormControl fullWidth size="small" sx={{ mb: 0.75 }}>
+              <Select
+                displayEmpty value={batchSource}
+                onChange={e => setBatchSource(e.target.value)}
+                sx={{ fontSize: 11 }}
+              >
+                <MenuItem value=""><em>All origins</em></MenuItem>
+                {batchSources.map(s => (
+                  <MenuItem key={s} value={s} sx={{ fontSize: 11 }}>{s}</MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+
+            <FormControl fullWidth size="small" sx={{ mb: 0.75 }}>
+              <Select
+                displayEmpty value={batchStandard}
+                onChange={e => setBatchStandard(e.target.value)}
+                sx={{ fontSize: 11 }}
+              >
+                <MenuItem value=""><em>All standards</em></MenuItem>
+                {batchStandards.map(s => (
+                  <MenuItem key={s} value={s} sx={{ fontSize: 11 }}>{s}</MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+
+            <Typography sx={{ fontSize: 10, color: 'text.disabled', mb: 0.75 }}>
+              {batchMatchCount} symbol{batchMatchCount !== 1 ? 's' : ''} matched
+              {batchMatchCount > 0 && (
+                <> &nbsp;·&nbsp; {batchMatchCount * count} image{batchMatchCount * count !== 1 ? 's' : ''} total</>
+              )}
+            </Typography>
+
+            <TextField
+              fullWidth size="small"
+              placeholder={`output folder (default: ${outDir || './augmented'})`}
+              value={batchOutDir} onChange={e => setBatchOutDir(e.target.value)}
+              inputProps={{ style: { fontSize: 11 } }}
+              sx={{ mb: 0.75 }}
+            />
+
+            <Button
+              fullWidth variant="outlined"
+              startIcon={batchRunning ? <CircularProgress size={12} /> : <SaveIcon sx={{ fontSize: 14 }} />}
+              disabled={batchMatchCount === 0 || batchRunning || previewing || saving}
+              onClick={handleBatch}
+              sx={{ fontSize: 11, borderColor: '#ff9800', color: '#ff9800', mb: batchRunning || batchResult ? 0.75 : 0 }}
+            >
+              {batchRunning
+                ? `Processing ${batchProgress ? `${batchProgress.current} / ${batchProgress.total}` : '…'}`
+                : `Augment ${batchMatchCount} Symbol${batchMatchCount !== 1 ? 's' : ''}`}
+            </Button>
+
+            {/* Live progress */}
+            {batchRunning && batchProgress && (
+              <Box sx={{ mb: 0.5 }}>
+                <LinearProgress
+                  variant="determinate"
+                  value={Math.round(batchProgress.current / batchProgress.total * 100)}
+                  sx={{
+                    height: 4, borderRadius: 1, mb: 0.5, bgcolor: '#333',
+                    '& .MuiLinearProgress-bar': { bgcolor: '#ff9800' },
+                  }}
+                />
+                <Typography sx={{ fontSize: 10, color: 'text.disabled', fontFamily: 'monospace' }} noWrap>
+                  {batchProgress.name}
+                  {batchProgress.saved != null && (
+                    <> &nbsp;·&nbsp; {batchProgress.saved} saved</>
+                  )}
+                </Typography>
+              </Box>
+            )}
+
+            {/* Result summary */}
+            {batchResult && !batchRunning && (
+              batchResult.error
+                ? <Alert severity="error"   sx={{ py: 0, fontSize: 11 }}>{batchResult.error}</Alert>
+                : <Alert severity={batchResult.errors > 0 ? 'warning' : 'success'} sx={{ py: 0, fontSize: 11 }}>
+                    ✓ {batchResult.saved} image{batchResult.saved !== 1 ? 's' : ''} saved
+                    {batchResult.skipped > 0 && `, ${batchResult.skipped} skipped`}
+                    {batchResult.errors  > 0 && `, ${batchResult.errors} error${batchResult.errors !== 1 ? 's' : ''}`}
+                    &nbsp;→&nbsp;{batchResult.output_dir}
+                  </Alert>
+            )}
+
+          </AccordionDetails>
+        </Accordion>
+
+        {/* Per-symbol results */}
+        {(previewing || saving) ? (
           <Box sx={{ display: 'flex', justifyContent: 'center', mt: 2 }}>
             <CircularProgress size={24} />
           </Box>
