@@ -60,5 +60,8 @@ processed/
 completed/
 exported/
 
+# Node
+node_modules/
+
 # Augmented symbols
 *-augmented/

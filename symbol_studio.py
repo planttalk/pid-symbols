@@ -504,13 +504,24 @@ def _export_completed(output_dir_str: str) -> dict:
 
 
 def _augment_preview(body: dict) -> tuple[dict | None, str]:
-    """Render SVG → PNG, apply degradation effects, return base64 PNG."""
+    """Render SVG → N augmented PNGs in memory, return base64 list.
+
+    Parameters
+    ----------
+    count               : int  – variations to generate (1–200, default 1)
+    randomize_per_image : bool – if True each image gets an independent random
+                          effect subset; otherwise the supplied effects are
+                          varied ±30 % per image.
+    """
     import base64
     import io as _io
+    import random as _random
 
-    rel     = body.get("path", "")
-    effects = {k: float(v) for k, v in body.get("effects", {}).items()}
-    size    = max(64, min(2048, int(body.get("size", 512))))
+    rel           = body.get("path", "")
+    effects       = {k: float(v) for k, v in body.get("effects", {}).items()}
+    size          = max(64, min(2048, int(body.get("size", 512))))
+    count         = max(1, min(200, int(body.get("count", 1))))
+    randomize_per = bool(body.get("randomize_per_image", False))
 
     base = _safe_path(rel)
     if base is None:
@@ -522,21 +533,37 @@ def _augment_preview(body: dict) -> tuple[dict | None, str]:
     try:
         import numpy as np
         from PIL import Image
-        from src.degradation import apply_effects
+        from src.degradation import apply_effects, _APPLY_ORDER
         from src.svg_utils import _render_svg_to_png
 
-        # Render at intrinsic SVG dimensions (same as the YOLO pipeline) so
-        # that the symbol geometry is correct, then resize to the target size.
+        # Render at intrinsic SVG dimensions then resize to target size.
         png_bytes = _render_svg_to_png(svg_path)
         img = Image.open(_io.BytesIO(png_bytes)).convert("RGB")
         if img.width != size or img.height != size:
             img = img.resize((size, size), Image.LANCZOS)
         arr = np.array(img, dtype=np.uint8)
-        arr = apply_effects(arr, effects)
-        buf = _io.BytesIO()
-        Image.fromarray(arr).save(buf, format="PNG")
-        b64 = base64.b64encode(buf.getvalue()).decode("ascii")
-        return {"image": f"data:image/png;base64,{b64}"}, ""
+
+        images_b64: list[str] = []
+        for _ in range(count):
+            if randomize_per:
+                n      = _random.randint(3, 7)
+                picked = _random.sample(_APPLY_ORDER, min(n, len(_APPLY_ORDER)))
+                varied = {name: round(_random.uniform(0.2, 0.9), 2) for name in picked}
+            elif effects:
+                varied = {
+                    name: float(np.clip(intensity * _random.uniform(0.7, 1.3), 0.0, 1.0))
+                    for name, intensity in effects.items() if intensity > 0.0
+                }
+            else:
+                varied = {}
+            out = apply_effects(arr, varied)
+            buf = _io.BytesIO()
+            Image.fromarray(out).save(buf, format="PNG")
+            images_b64.append(
+                "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode("ascii")
+            )
+
+        return {"images": images_b64}, ""
     except Exception as exc:
         return None, str(exc)
 

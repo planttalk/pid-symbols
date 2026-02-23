@@ -1,16 +1,30 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import {
   Box, Typography, Button, Slider, Checkbox, FormControlLabel,
   TextField, Stack, Accordion, AccordionSummary, AccordionDetails,
   Alert, CircularProgress, Switch, ImageList, ImageListItem,
-  ImageListItemBar, Tooltip, Divider,
+  ImageListItemBar, Divider, IconButton, Modal,
 } from '@mui/material';
-import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
-import ShuffleIcon from '@mui/icons-material/Shuffle';
-import VisibilityIcon from '@mui/icons-material/Visibility';
-import SaveIcon from '@mui/icons-material/Save';
+import ExpandMoreIcon       from '@mui/icons-material/ExpandMore';
+import ShuffleIcon          from '@mui/icons-material/Shuffle';
+import VisibilityIcon       from '@mui/icons-material/Visibility';
+import SaveIcon             from '@mui/icons-material/Save';
+import ChevronLeftIcon      from '@mui/icons-material/ChevronLeft';
+import ChevronRightIcon     from '@mui/icons-material/ChevronRight';
+import CloseIcon            from '@mui/icons-material/Close';
 import { useEditorStore } from '../store';
 import { EFFECT_GROUPS, ALL_EFFECT_NAMES } from '../constants';
+
+const PAGE_SIZE = 20;
+
+// Adaptive column count based on total image count
+function gridCols(n) {
+  if (n === 1)  return 1;
+  if (n <= 4)   return 2;
+  if (n <= 9)   return 3;
+  if (n <= 16)  return 4;
+  return 5;
+}
 
 // ── Single effect row ─────────────────────────────────────────────────────────
 function EffectRow({ name, label, value, onChange, onToggle, enabled }) {
@@ -66,33 +80,177 @@ function EffectGroup({ group, augEffects, onChange, onToggle }) {
   );
 }
 
-// ── Generated image grid ───────────────────────────────────────────────────────
-function AugmentGrid({ images }) {
+// ── Lightbox modal ────────────────────────────────────────────────────────────
+function Lightbox({ images, idx, onClose, onGoto }) {
+  const img = images[idx];
+
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key === 'Escape')      { e.stopPropagation(); onClose(); }
+      if (e.key === 'ArrowLeft'  && idx > 0)                  onGoto(idx - 1);
+      if (e.key === 'ArrowRight' && idx < images.length - 1)  onGoto(idx + 1);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [idx, images.length, onClose, onGoto]);
+
+  if (!img) return null;
+
+  return (
+    <Modal open onClose={onClose}>
+      {/* Backdrop — click outside image to close */}
+      <Box
+        onClick={onClose}
+        sx={{
+          position: 'fixed', inset: 0,
+          display: 'flex', flexDirection: 'column',
+          alignItems: 'center', justifyContent: 'center',
+          bgcolor: 'rgba(0,0,0,0.88)',
+          outline: 'none',
+        }}
+      >
+        {/* Inner card — stop propagation so clicking image doesn't close */}
+        <Box
+          onClick={e => e.stopPropagation()}
+          sx={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', maxWidth: '92vw' }}
+        >
+          {/* Close button */}
+          <IconButton
+            onClick={onClose}
+            size="small"
+            sx={{ position: 'absolute', top: -36, right: 0, color: 'white', bgcolor: 'rgba(255,255,255,0.08)', '&:hover': { bgcolor: 'rgba(255,255,255,0.18)' } }}
+          >
+            <CloseIcon sx={{ fontSize: 18 }} />
+          </IconButton>
+
+          {/* Image */}
+          <Box
+            component="img"
+            src={img.src}
+            alt={img.label}
+            sx={{
+              maxWidth: '88vw',
+              maxHeight: '80vh',
+              objectFit: 'contain',
+              bgcolor: 'white',
+              borderRadius: 1,
+              boxShadow: '0 8px 40px rgba(0,0,0,0.6)',
+              display: 'block',
+            }}
+          />
+
+          {/* Navigation bar */}
+          <Stack direction="row" alignItems="center" justifyContent="space-between"
+            sx={{ mt: 1.5, width: '100%', px: 0.5 }}>
+            <IconButton
+              disabled={idx === 0}
+              onClick={() => onGoto(idx - 1)}
+              sx={{ color: 'white', bgcolor: 'rgba(255,255,255,0.08)', '&:hover': { bgcolor: 'rgba(255,255,255,0.18)' }, '&.Mui-disabled': { color: 'rgba(255,255,255,0.2)' } }}
+            >
+              <ChevronLeftIcon />
+            </IconButton>
+
+            <Typography sx={{ color: 'rgba(255,255,255,0.7)', fontSize: 12, fontFamily: 'monospace' }}>
+              {img.label} &nbsp;·&nbsp; {idx + 1} / {images.length}
+            </Typography>
+
+            <IconButton
+              disabled={idx === images.length - 1}
+              onClick={() => onGoto(idx + 1)}
+              sx={{ color: 'white', bgcolor: 'rgba(255,255,255,0.08)', '&:hover': { bgcolor: 'rgba(255,255,255,0.18)' }, '&.Mui-disabled': { color: 'rgba(255,255,255,0.2)' } }}
+            >
+              <ChevronRightIcon />
+            </IconButton>
+          </Stack>
+        </Box>
+      </Box>
+    </Modal>
+  );
+}
+
+// ── Smart grid: adaptive cols + pagination for large sets ─────────────────────
+function SmartGrid({ images, label }) {
+  const [page,        setPage]        = useState(0);
+  const [lightboxIdx, setLightboxIdx] = useState(null);
+
+  // Reset to first page whenever the image set changes
+  useEffect(() => { setPage(0); setLightboxIdx(null); }, [images]);
+
   if (!images.length) return null;
+
+  const n           = images.length;
+  const needsPaging = n > PAGE_SIZE;
+  const totalPages  = Math.ceil(n / PAGE_SIZE);
+  const visible     = images.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
+  const cols        = gridCols(n);
+
+  const openLightbox = (absoluteIdx) => {
+    // When navigating via lightbox arrows, sync the grid page if needed
+    const targetPage = Math.floor(absoluteIdx / PAGE_SIZE);
+    if (targetPage !== page) setPage(targetPage);
+    setLightboxIdx(absoluteIdx);
+  };
+
   return (
     <Box sx={{ mt: 1 }}>
-      <Typography sx={{ fontSize: 11, color: 'text.secondary', mb: 0.5 }}>
-        {images.length} image{images.length !== 1 ? 's' : ''} generated
-      </Typography>
-      <ImageList cols={3} gap={4}>
-        {images.map((img, i) => (
-          <ImageListItem key={i} sx={{ cursor: 'pointer' }}
-            onClick={() => window.open(img.src, '_blank')}
-          >
-            <Box
-              component="img"
-              src={img.src}
-              alt={img.label}
-              sx={{ width: '100%', aspectRatio: '1', objectFit: 'contain', bgcolor: 'white', borderRadius: 0.5 }}
-            />
-            <ImageListItemBar
-              title={img.label}
-              position="below"
-              sx={{ '& .MuiImageListItemBar-title': { fontSize: 9, color: 'text.disabled' } }}
-            />
-          </ImageListItem>
-        ))}
+      <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 0.5 }}>
+        <Typography sx={{ fontSize: 11, color: 'text.secondary' }}>
+          {label} &nbsp;·&nbsp; {n} image{n !== 1 ? 's' : ''}
+        </Typography>
+        {needsPaging && (
+          <Stack direction="row" alignItems="center" gap={0.25}>
+            <IconButton
+              size="small" disabled={page === 0}
+              onClick={() => setPage(p => p - 1)}
+            >
+              <ChevronLeftIcon sx={{ fontSize: 14 }} />
+            </IconButton>
+            <Typography sx={{ fontSize: 10, color: 'text.secondary', minWidth: 44, textAlign: 'center' }}>
+              {page + 1} / {totalPages}
+            </Typography>
+            <IconButton
+              size="small" disabled={page >= totalPages - 1}
+              onClick={() => setPage(p => p + 1)}
+            >
+              <ChevronRightIcon sx={{ fontSize: 14 }} />
+            </IconButton>
+          </Stack>
+        )}
+      </Stack>
+
+      <ImageList cols={cols} gap={3}>
+        {visible.map((img, i) => {
+          const absIdx = page * PAGE_SIZE + i;
+          return (
+            <ImageListItem
+              key={absIdx}
+              sx={{ cursor: 'zoom-in' }}
+              onClick={() => openLightbox(absIdx)}
+            >
+              <Box
+                component="img"
+                src={img.src}
+                alt={img.label}
+                sx={{ width: '100%', aspectRatio: '1', objectFit: 'contain', bgcolor: 'white', borderRadius: 0.5 }}
+              />
+              <ImageListItemBar
+                title={img.label}
+                position="below"
+                sx={{ '& .MuiImageListItemBar-title': { fontSize: 9, color: 'text.disabled' } }}
+              />
+            </ImageListItem>
+          );
+        })}
       </ImageList>
+
+      {lightboxIdx !== null && (
+        <Lightbox
+          images={images}
+          idx={lightboxIdx}
+          onClose={() => setLightboxIdx(null)}
+          onGoto={openLightbox}
+        />
+      )}
     </Box>
   );
 }
@@ -101,69 +259,69 @@ function AugmentGrid({ images }) {
 export default function AugmentTab() {
   const {
     currentPath, augEffects, augSize, augCount, augOutputDir, augRandomizePerImg,
-    augImages, augGenerating, augPreviewLoading, augPreviewSrc,
-    setAugEffect, removeAugEffect, setAugImages, setAugPreviewSrc,
+    setAugEffect, removeAugEffect, setAugImages,
   } = useEditorStore();
 
-  const [size,    setSize]    = useState(augSize);
-  const [count,   setCount]   = useState(augCount);
-  const [outDir,  setOutDir]  = useState(augOutputDir);
-  const [randPer, setRandPer] = useState(augRandomizePerImg);
-  const [loading, setLoading] = useState(false);
-  const [prevLoad, setPrevLoad] = useState(false);
-  const [prevSrc,  setPrevSrc]  = useState(augPreviewSrc);
-  const [images,   setImages]   = useState(augImages);
-  const [msg,      setMsg]      = useState(null);
-  const previewTimer = useRef(null);
+  const [size,       setSize]       = useState(augSize);
+  const [count,      setCount]      = useState(augCount);
+  const [outDir,     setOutDir]     = useState(augOutputDir);
+  const [randPer,    setRandPer]    = useState(augRandomizePerImg);
+  const [previewing, setPreviewing] = useState(false);
+  const [saving,     setSaving]     = useState(false);
+  const [images,     setImages]     = useState([]);
+  const [imagesLabel, setImagesLabel] = useState('');
+  const [msg,        setMsg]        = useState(null);
+
+  const busy = previewing || saving;
 
   const handleToggle = useCallback((name, enabled) => {
     if (enabled) setAugEffect(name, 0.5);
     else         removeAugEffect(name);
-    schedulePreview();
   }, [setAugEffect, removeAugEffect]);
 
   const handleChange = useCallback((name, value) => {
     setAugEffect(name, value);
-    schedulePreview();
   }, [setAugEffect]);
 
-  const schedulePreview = () => {
-    if (previewTimer.current) clearTimeout(previewTimer.current);
-    previewTimer.current = setTimeout(doPreview, 700);
-  };
+  const handleRandomize = useCallback(() => {
+    const n      = Math.floor(Math.random() * 4) + 3;
+    const picked = [...ALL_EFFECT_NAMES].sort(() => Math.random() - 0.5).slice(0, n);
+    ALL_EFFECT_NAMES.forEach(name => removeAugEffect(name));
+    picked.forEach(name => setAugEffect(name, +(Math.random() * 0.7 + 0.2).toFixed(2)));
+  }, [setAugEffect, removeAugEffect]);
 
-  const doPreview = useCallback(async () => {
+  const handlePreview = useCallback(async () => {
     if (!currentPath) return;
-    setPrevLoad(true);
+    setPreviewing(true);
+    setMsg(null);
+    setImages([]);
     try {
       const { augEffects: effects } = useEditorStore.getState();
-      const res  = await fetch('/api/augment-preview', {
+      const res = await fetch('/api/augment-preview', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ path: currentPath, effects, size }),
+        body: JSON.stringify({
+          path:                currentPath,
+          effects,
+          size,
+          count,
+          randomize_per_image: randPer,
+        }),
       });
       if (!res.ok) throw new Error(await res.text());
       const data = await res.json();
-      setPrevSrc(data.image);
+      const imgs = (data.images || []).map((src, i) => ({ src, label: `#${i + 1}` }));
+      setImages(imgs);
+      setImagesLabel('Preview (unsaved)');
     } catch (e) {
       setMsg({ err: '✗ Preview: ' + e.message });
     } finally {
-      setPrevLoad(false);
+      setPreviewing(false);
     }
-  }, [currentPath, size]);
-
-  const handleRandomize = useCallback(() => {
-    // Pick 3–6 random effects with random intensities
-    const n      = Math.floor(Math.random() * 4) + 3;
-    const picked = [...ALL_EFFECT_NAMES].sort(() => Math.random() - 0.5).slice(0, n);
-    // Clear existing, set new
-    ALL_EFFECT_NAMES.forEach(name => removeAugEffect(name));
-    picked.forEach(name => setAugEffect(name, +(Math.random() * 0.7 + 0.2).toFixed(2)));
-    schedulePreview();
-  }, [setAugEffect, removeAugEffect]);
+  }, [currentPath, size, count, randPer]);
 
   const handleGenerate = useCallback(async () => {
     if (!currentPath) return;
-    setLoading(true);
+    setSaving(true);
     setMsg(null);
     setImages([]);
     try {
@@ -171,76 +329,62 @@ export default function AugmentTab() {
       const res = await fetch('/api/augment-generate', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          path:               currentPath,
+          path:                currentPath,
           effects,
           count,
           size,
-          output_dir:         outDir,
+          output_dir:          outDir,
           randomize_per_image: randPer,
-          return_images:      true,
+          return_images:       true,
         }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Generation failed');
-      const imgs = (data.images || []).map((src, i) => ({
-        src,
-        label: `#${i+1}`,
-      }));
+      const imgs = (data.images || []).map((src, i) => ({ src, label: `#${i + 1}` }));
       setImages(imgs);
       setAugImages(imgs);
+      setImagesLabel(`Saved → ${data.output_dir}`);
       setMsg({ ok: `✓ ${data.saved} image(s) saved to ${data.output_dir}` });
     } catch (e) {
       setMsg({ err: '✗ ' + e.message });
     } finally {
-      setLoading(false);
+      setSaving(false);
     }
   }, [currentPath, count, size, outDir, randPer, setAugImages]);
 
   return (
     <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-      {/* Preview area */}
-      <Box sx={{
-        flexShrink: 0, bgcolor: '#2a2a2a', borderBottom: '1px solid #444',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        minHeight: 140, maxHeight: 220, position: 'relative', overflow: 'hidden',
-      }}>
-        {prevLoad && (
-          <CircularProgress size={24} sx={{ position: 'absolute' }} />
-        )}
-        {prevSrc ? (
-          <Box component="img" src={prevSrc} alt="preview"
-            sx={{ maxWidth: '100%', maxHeight: 216, objectFit: 'contain',
-                  opacity: prevLoad ? 0.3 : 1, transition: 'opacity 0.2s' }} />
-        ) : (
-          !prevLoad && (
-            <Typography sx={{ fontSize: 11, color: '#555' }}>
-              {currentPath ? 'Select effects, then Preview' : 'Select a symbol first'}
-            </Typography>
-          )
-        )}
-      </Box>
-
-      {/* Controls */}
       <Box sx={{ flex: 1, overflowY: 'auto', px: 1.25, py: 0.75 }}>
+
         {/* Top actions */}
         <Stack direction="row" gap={0.75} sx={{ mb: 1 }}>
-          <Button fullWidth startIcon={<VisibilityIcon sx={{ fontSize: 14 }} />}
-            onClick={doPreview} disabled={!currentPath || prevLoad}
-            sx={{ fontSize: 11, borderColor: '#4ec9b0', color: '#4ec9b0' }}>
-            Preview
+          <Button
+            fullWidth
+            startIcon={previewing ? <CircularProgress size={12} /> : <VisibilityIcon sx={{ fontSize: 14 }} />}
+            onClick={handlePreview}
+            disabled={!currentPath || busy}
+            sx={{ fontSize: 11, borderColor: '#4ec9b0', color: '#4ec9b0' }}
+          >
+            {previewing ? 'Previewing…' : `Preview ${count}`}
           </Button>
-          <Button fullWidth startIcon={<ShuffleIcon sx={{ fontSize: 14 }} />}
-            onClick={handleRandomize} disabled={!currentPath}
-            sx={{ fontSize: 11, borderColor: '#cc88ff', color: '#cc88ff' }}>
+          <Button
+            fullWidth
+            startIcon={<ShuffleIcon sx={{ fontSize: 14 }} />}
+            onClick={handleRandomize}
+            disabled={busy}
+            sx={{ fontSize: 11, borderColor: '#cc88ff', color: '#cc88ff' }}
+          >
             Randomize
           </Button>
         </Stack>
 
         <Stack direction="row" alignItems="center" gap={1} sx={{ mb: 1 }}>
           <Typography sx={{ fontSize: 11, color: 'text.secondary' }}>Size</Typography>
-          <TextField type="number" size="small"
+          <TextField
+            type="number" size="small"
             value={size} onChange={e => setSize(+e.target.value || 512)}
-            inputProps={{ min: 64, max: 2048, step: 64, style: { width: 64, fontSize: 11 } }} />
+            inputProps={{ min: 64, max: 2048, step: 64, style: { width: 64, fontSize: 11 } }}
+          />
           <Typography sx={{ fontSize: 10, color: 'text.disabled' }}>px</Typography>
         </Stack>
 
@@ -265,9 +409,11 @@ export default function AugmentTab() {
         />
         <Stack direction="row" alignItems="center" gap={1} sx={{ mb: 0.75 }}>
           <Typography sx={{ fontSize: 11, color: 'text.secondary', flexShrink: 0 }}>Count</Typography>
-          <TextField type="number" size="small"
+          <TextField
+            type="number" size="small"
             value={count} onChange={e => setCount(Math.max(1, +e.target.value || 1))}
-            inputProps={{ min: 1, max: 100, style: { width: 56, fontSize: 11 } }} />
+            inputProps={{ min: 1, max: 200, style: { width: 56, fontSize: 11 } }}
+          />
         </Stack>
         <TextField
           fullWidth size="small" placeholder="output folder (default: ./augmented)"
@@ -276,11 +422,13 @@ export default function AugmentTab() {
           sx={{ mb: 0.75 }}
         />
         <Button
-          fullWidth variant="outlined" startIcon={loading ? <CircularProgress size={12} /> : <SaveIcon sx={{ fontSize: 14 }} />}
-          disabled={!currentPath || loading}
+          fullWidth variant="outlined"
+          startIcon={saving ? <CircularProgress size={12} /> : <SaveIcon sx={{ fontSize: 14 }} />}
+          disabled={!currentPath || busy}
           onClick={handleGenerate}
-          sx={{ fontSize: 11, borderColor: '#4ec994', color: '#4ec994', mb: 0.5 }}>
-          {loading ? `Generating ${count} image(s)…` : `Generate ${count} Image(s)`}
+          sx={{ fontSize: 11, borderColor: '#4ec994', color: '#4ec994', mb: 0.5 }}
+        >
+          {saving ? `Saving ${count} image(s)…` : `Generate & Save ${count}`}
         </Button>
 
         {msg && (
@@ -289,8 +437,15 @@ export default function AugmentTab() {
           </Alert>
         )}
 
-        {/* Generated image grid */}
-        <AugmentGrid images={images} />
+        {/* Results */}
+        {busy ? (
+          <Box sx={{ display: 'flex', justifyContent: 'center', mt: 2 }}>
+            <CircularProgress size={24} />
+          </Box>
+        ) : (
+          <SmartGrid images={images} label={imagesLabel} />
+        )}
+
       </Box>
     </Box>
   );
