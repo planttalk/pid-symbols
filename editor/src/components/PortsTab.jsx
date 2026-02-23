@@ -9,6 +9,24 @@ import LockOpenIcon from '@mui/icons-material/LockOpen';
 import { useEditorStore } from '../store';
 import { PORT_TYPES, portColor } from '../constants';
 
+// ── Section label helper ──────────────────────────────────────────────────────
+function SectionLabel({ children }) {
+  return (
+    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mt: 1.5, mb: 0.5 }}>
+      <Box sx={{
+        width: 2, height: 10, borderRadius: 1,
+        bgcolor: 'primary.main', flexShrink: 0,
+      }} />
+      <Typography sx={{
+        fontSize: '0.6rem', fontWeight: 700, letterSpacing: '0.1em',
+        textTransform: 'uppercase', color: 'text.disabled',
+      }}>
+        {children}
+      </Typography>
+    </Box>
+  );
+}
+
 // ── Port type grid ────────────────────────────────────────────────────────────
 function TypeGrid() {
   const { portType, selIdx, ports, setPortType, updatePort } = useEditorStore();
@@ -31,9 +49,11 @@ function TypeGrid() {
             variant={active ? 'contained' : 'outlined'}
             sx={{
               justifyContent: 'flex-start', gap: 0.75, p: '3px 8px',
-              fontSize: 11, borderColor: active ? t.color : '#555',
+              fontSize: 11,
+              borderColor: active ? t.color : 'rgba(255,255,255,0.12)',
               bgcolor: active ? t.color + '33' : 'transparent',
               color: active ? t.color : 'text.secondary',
+              borderRadius: '999px',
               '&:hover': { bgcolor: t.color + '22', borderColor: t.color },
             }}
           >
@@ -56,9 +76,12 @@ function PortRow({ port, idx }) {
     <ListItemButton
       selected={selected}
       onClick={e => selectPort(idx, e.ctrlKey || e.metaKey)}
-      sx={{ py: 0.25, px: 0.75, borderRadius: 0.5 }}
+      sx={{ py: 0.25, px: 0.75, borderRadius: '6px', gap: 0.5 }}
     >
-      <Box sx={{ width: 11, height: 11, borderRadius: '50%', bgcolor: col, border: '1.5px solid rgba(255,255,255,0.3)', flexShrink: 0, mr: 0.75 }} />
+      <Box sx={{
+        width: 11, height: 11, borderRadius: '50%', bgcolor: col,
+        border: '1.5px solid rgba(255,255,255,0.3)', flexShrink: 0,
+      }} />
       <ListItemText
         primary={port.id}
         secondary={port.zone
@@ -66,13 +89,20 @@ function PortRow({ port, idx }) {
           : `${(port.x||0).toFixed(1)}, ${(port.y||0).toFixed(1)}`
         }
         primaryTypographyProps={{ fontSize: 12 }}
-        secondaryTypographyProps={{ fontSize: 10, fontFamily: 'monospace' }}
+        secondaryTypographyProps={{ fontSize: 10, fontFamily: '"JetBrains Mono", "Cascadia Code", Consolas, monospace' }}
       />
-      {port.zone && <Chip label="zone" size="small" sx={{ fontSize: 8, height: 14, ml: 0.5, color: '#9cdcfe', borderColor: '#9cdcfe' }} variant="outlined" />}
+      {port.zone && (
+        <Chip
+          label="zone"
+          size="small"
+          sx={{ fontSize: 8, height: 14, ml: 0.5, color: 'secondary.main', borderColor: 'secondary.main' }}
+          variant="outlined"
+        />
+      )}
       <IconButton
         size="small"
         onClick={e => { e.stopPropagation(); updatePort(idx, { locked: !port.locked }); }}
-        sx={{ p: 0.25, opacity: port.locked ? 0.9 : 0.4, '&:hover': { opacity: 1 } }}
+        sx={{ p: 0.25, ml: 'auto', opacity: port.locked ? 0.9 : 0.4, '&:hover': { opacity: 1 } }}
       >
         {port.locked ? <LockIcon sx={{ fontSize: 11 }} /> : <LockOpenIcon sx={{ fontSize: 11 }} />}
       </IconButton>
@@ -109,40 +139,51 @@ function FieldEditor() {
   };
 
   return (
-    <Box sx={{ mt: 0.5, display: 'flex', flexDirection: 'column', gap: 0.5 }}>
-      <TextField
-        label="Name" fullWidth size="small"
-        value={p.id}
-        onChange={e => updatePort(selIdx, { id: e.target.value })}
-        inputProps={{ style: { fontSize: 11 } }}
-      />
-      <Button size="small" variant="outlined" onClick={p.zone ? convertToPoint : convertToZone}
-        sx={{ fontSize: 10, py: 0.25, borderColor: '#9cdcfe', color: '#9cdcfe' }}>
-        {p.zone ? 'Convert to Point' : 'Convert to Zone'}
-      </Button>
-      {!p.zone ? (
-        <Stack direction="row" gap={1}>
-          <TextField label="X" size="small" type="number" inputProps={{ step: 0.5, style: { fontSize: 11 } }}
-            value={(p.x||0).toFixed(2)} onChange={e => setField('x', e.target.value)} sx={{ flex: 1 }} />
-          <TextField label="Y" size="small" type="number" inputProps={{ step: 0.5, style: { fontSize: 11 } }}
-            value={(p.y||0).toFixed(2)} onChange={e => setField('y', e.target.value)} sx={{ flex: 1 }} />
-        </Stack>
-      ) : (
-        <>
+    <Box sx={{
+      bgcolor: 'rgba(255,255,255,0.025)',
+      borderRadius: 1,
+      p: 1,
+      mt: 0.5,
+    }}>
+      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+        <TextField
+          label="Name" fullWidth size="small"
+          value={p.id}
+          onChange={e => updatePort(selIdx, { id: e.target.value })}
+          inputProps={{ style: { fontSize: 11 } }}
+        />
+        <Button
+          size="small"
+          variant="outlined"
+          onClick={p.zone ? convertToPoint : convertToZone}
+          sx={{ fontSize: 10, py: 0.25, borderColor: 'secondary.main', color: 'secondary.main' }}
+        >
+          {p.zone ? 'Convert to Point' : 'Convert to Zone'}
+        </Button>
+        {!p.zone ? (
           <Stack direction="row" gap={1}>
-            <TextField label="ZX" size="small" type="number" inputProps={{ step: 0.5, style: { fontSize: 11 } }}
-              value={(p.zone.x||0).toFixed(2)} onChange={e => updatePort(selIdx, { zone: { ...p.zone, x: +e.target.value } })} sx={{ flex: 1 }} />
-            <TextField label="ZY" size="small" type="number" inputProps={{ step: 0.5, style: { fontSize: 11 } }}
-              value={(p.zone.y||0).toFixed(2)} onChange={e => updatePort(selIdx, { zone: { ...p.zone, y: +e.target.value } })} sx={{ flex: 1 }} />
+            <TextField label="X" size="small" type="number" inputProps={{ step: 0.5, style: { fontSize: 11 } }}
+              value={(p.x||0).toFixed(2)} onChange={e => setField('x', e.target.value)} sx={{ flex: 1 }} />
+            <TextField label="Y" size="small" type="number" inputProps={{ step: 0.5, style: { fontSize: 11 } }}
+              value={(p.y||0).toFixed(2)} onChange={e => setField('y', e.target.value)} sx={{ flex: 1 }} />
           </Stack>
-          <Stack direction="row" gap={1}>
-            <TextField label="W" size="small" type="number" inputProps={{ step: 0.5, min: 0.1, style: { fontSize: 11 } }}
-              value={(p.zone.width||1).toFixed(2)} onChange={e => updatePort(selIdx, { zone: { ...p.zone, width: +e.target.value } })} sx={{ flex: 1 }} />
-            <TextField label="H" size="small" type="number" inputProps={{ step: 0.5, min: 0.1, style: { fontSize: 11 } }}
-              value={(p.zone.height||1).toFixed(2)} onChange={e => updatePort(selIdx, { zone: { ...p.zone, height: +e.target.value } })} sx={{ flex: 1 }} />
-          </Stack>
-        </>
-      )}
+        ) : (
+          <>
+            <Stack direction="row" gap={1}>
+              <TextField label="ZX" size="small" type="number" inputProps={{ step: 0.5, style: { fontSize: 11 } }}
+                value={(p.zone.x||0).toFixed(2)} onChange={e => updatePort(selIdx, { zone: { ...p.zone, x: +e.target.value } })} sx={{ flex: 1 }} />
+              <TextField label="ZY" size="small" type="number" inputProps={{ step: 0.5, style: { fontSize: 11 } }}
+                value={(p.zone.y||0).toFixed(2)} onChange={e => updatePort(selIdx, { zone: { ...p.zone, y: +e.target.value } })} sx={{ flex: 1 }} />
+            </Stack>
+            <Stack direction="row" gap={1}>
+              <TextField label="W" size="small" type="number" inputProps={{ step: 0.5, min: 0.1, style: { fontSize: 11 } }}
+                value={(p.zone.width||1).toFixed(2)} onChange={e => updatePort(selIdx, { zone: { ...p.zone, width: +e.target.value } })} sx={{ flex: 1 }} />
+              <TextField label="H" size="small" type="number" inputProps={{ step: 0.5, min: 0.1, style: { fontSize: 11 } }}
+                value={(p.zone.height||1).toFixed(2)} onChange={e => updatePort(selIdx, { zone: { ...p.zone, height: +e.target.value } })} sx={{ flex: 1 }} />
+            </Stack>
+          </>
+        )}
+      </Box>
     </Box>
   );
 }
@@ -155,8 +196,8 @@ export default function PortsTab() {
     showGrid, snapGrid, gridSize, midState, matchMode,
     setMarkerMode, setAxisLock, setShowGrid, setSnapGrid, setGridSize,
     saveSymbol, nextSymbol, toggleComplete, generateDebug, exportCompleted,
-    addPort, deleteSelected, setMidState, setMatchMode, setSaveMsg,
-    saveMsg, exportMsg, viewBox, portType, snapVal, selectPort, updatePort,
+    addPort, deleteSelected, setMidState, setMatchMode,
+    saveMsg, exportMsg, portType, snapVal, selectPort, updatePort,
   } = useEditorStore();
 
   const canDelete = selection.size > 0 || selIdx !== null;
@@ -172,19 +213,30 @@ export default function PortsTab() {
 
   return (
     <Box sx={{ flex: 1, overflowY: 'auto', px: 1.25, py: 0.75 }}>
+
       {/* Symbol info */}
-      <Typography variant="h6" sx={{ mt: 0.5 }}>Symbol</Typography>
-      <Typography sx={{ fontSize: 10, color: 'text.secondary', wordBreak: 'break-all', lineHeight: 1.5 }}>
-        {symbolMeta ? symbolMeta.display_name || currentPath : '—'}
-        {symbolMeta?.standard && <><br />{symbolMeta.standard} / {symbolMeta.category}</>}
-      </Typography>
+      <SectionLabel>Symbol</SectionLabel>
+      <Box sx={{
+        bgcolor: 'rgba(255,255,255,0.03)',
+        borderRadius: 1,
+        p: 0.75,
+        mt: 0.5,
+        mb: 0.5,
+      }}>
+        <Typography sx={{ fontSize: 10, color: 'text.secondary', wordBreak: 'break-all', lineHeight: 1.5 }}>
+          {symbolMeta ? symbolMeta.display_name || currentPath : '—'}
+          {symbolMeta?.standard && (
+            <><br /><Box component="span" sx={{ color: 'text.disabled' }}>{symbolMeta.standard} / {symbolMeta.category}</Box></>
+          )}
+        </Typography>
+      </Box>
 
       <Divider />
-      <Typography variant="h6">Port Type</Typography>
+      <SectionLabel>Port Type</SectionLabel>
       <TypeGrid />
 
       <Divider />
-      <Typography variant="h6">Marker</Typography>
+      <SectionLabel>Marker</SectionLabel>
       <RadioGroup row value={markerMode} onChange={e => setMarkerMode(e.target.value)} sx={{ gap: 1 }}>
         {['crosshair','dot','none'].map(m => (
           <FormControlLabel key={m} value={m} control={<Radio size="small" />}
@@ -193,7 +245,7 @@ export default function PortsTab() {
       </RadioGroup>
 
       <Divider />
-      <Typography variant="h6">Grid</Typography>
+      <SectionLabel>Grid</SectionLabel>
       <FormControlLabel
         control={<Checkbox size="small" checked={showGrid} onChange={e => setShowGrid(e.target.checked)} />}
         label={<Typography sx={{ fontSize: 11 }}>Show Grid</Typography>}
@@ -204,13 +256,17 @@ export default function PortsTab() {
       />
       <Stack direction="row" alignItems="center" gap={1} sx={{ mt: 0.5 }}>
         <Typography sx={{ fontSize: 11, color: 'text.secondary' }}>Size</Typography>
-        <TextField type="number" size="small" value={gridSize}
+        <TextField
+          type="number"
+          size="small"
+          value={gridSize}
           onChange={e => setGridSize(+e.target.value || 10)}
-          inputProps={{ min: 1, max: 200, style: { width: 56, fontSize: 11 } }} />
+          inputProps={{ min: 1, max: 200, style: { width: 56, fontSize: 11 } }}
+        />
       </Stack>
 
       <Divider />
-      <Typography variant="h6">Axis Lock</Typography>
+      <SectionLabel>Axis Lock</SectionLabel>
       <RadioGroup value={axisLock} onChange={e => setAxisLock(e.target.value)}>
         {[['FREE','Free'],['LOCK_X','Lock X — vertical only'],['LOCK_Y','Lock Y — horizontal only']].map(([v,l]) => (
           <FormControlLabel key={v} value={v} control={<Radio size="small" />}
@@ -219,7 +275,7 @@ export default function PortsTab() {
       </RadioGroup>
 
       <Divider />
-      <Typography variant="h6">Ports</Typography>
+      <SectionLabel>Ports</SectionLabel>
       <List dense disablePadding sx={{ maxHeight: 130, overflowY: 'auto', mb: 0.5 }}>
         {ports.map((p, i) => <PortRow key={i} port={p} idx={i} />)}
       </List>
@@ -227,9 +283,15 @@ export default function PortsTab() {
       {/* Port actions */}
       <Stack direction="row" gap={0.5} flexWrap="wrap" sx={{ mb: 0.5 }}>
         <Button size="small" onClick={handleAddCenter} sx={{ fontSize: 11 }}>+ Add</Button>
-        <Button size="small" disabled={!canMid}
+        <Button
+          size="small"
+          disabled={!canMid}
           onClick={() => setMidState(midState ? null : { step: 1 })}
-          sx={{ fontSize: 11, ...(midState ? { borderColor: '#9944ee', color: '#cc88ff' } : {}) }}>
+          sx={{
+            fontSize: 11,
+            ...(midState ? { borderColor: '#9944ee', color: '#cc88ff' } : {}),
+          }}
+        >
           ⊕ Midpoint
         </Button>
         <Button size="small" color="error" disabled={!canDelete} onClick={deleteSelected} sx={{ fontSize: 11 }}>
@@ -238,9 +300,16 @@ export default function PortsTab() {
       </Stack>
       <Stack direction="row" gap={0.5} sx={{ mb: 0.5 }}>
         {['Y','X'].map(axis => (
-          <Button key={axis} size="small" fullWidth
+          <Button
+            key={axis}
+            size="small"
+            fullWidth
             onClick={() => setMatchMode(matchMode?.axis === axis ? null : { axis, firstIdx: null })}
-            sx={{ fontSize: 11, ...(matchMode?.axis === axis ? { borderColor: '#ffcc00', color: '#ffcc00' } : {}) }}>
+            sx={{
+              fontSize: 11,
+              ...(matchMode?.axis === axis ? { borderColor: '#ffcc00', color: '#ffcc00' } : {}),
+            }}
+          >
             Match {axis}
           </Button>
         ))}
@@ -249,20 +318,50 @@ export default function PortsTab() {
       <FieldEditor />
 
       <Divider />
-      {/* Save / Next / Complete */}
+
+      {/* Save / Next / Complete / Debug */}
+      <SectionLabel>Export</SectionLabel>
       <Stack gap={0.5} sx={{ mt: 0.5 }}>
-        <Button fullWidth variant="contained" color="primary" onClick={() => saveSymbol()} sx={{ fontSize: 11 }}>
-          💾 Save JSON
+        <Button
+          fullWidth
+          variant="contained"
+          onClick={() => saveSymbol()}
+          sx={{
+            fontSize: 11,
+            bgcolor: 'primary.main',
+            '&:hover': { bgcolor: 'primary.dark' },
+          }}
+        >
+          Save JSON
         </Button>
-        <Button fullWidth variant="outlined" color="success" disabled={!currentPath} onClick={nextSymbol} sx={{ fontSize: 11 }}>
-          💾 Save &amp; Next →
+        <Button
+          fullWidth
+          variant="outlined"
+          color="success"
+          disabled={!currentPath}
+          onClick={nextSymbol}
+          sx={{ fontSize: 11 }}
+        >
+          Save &amp; Next →
         </Button>
-        <Button fullWidth variant="outlined"
+        <Button
+          fullWidth
+          variant="outlined"
           color={symbolMeta?.completed ? 'success' : 'inherit'}
-          disabled={!currentPath} onClick={toggleComplete} sx={{ fontSize: 11 }}>
+          disabled={!currentPath}
+          onClick={toggleComplete}
+          sx={{ fontSize: 11 }}
+        >
           {symbolMeta?.completed ? '✓ Completed' : '✓ Mark Complete'}
         </Button>
-        <Button fullWidth onClick={generateDebug} sx={{ fontSize: 11 }}>🔍 Generate _debug.svg</Button>
+        <Button
+          fullWidth
+          variant="outlined"
+          onClick={generateDebug}
+          sx={{ fontSize: 11 }}
+        >
+          Generate _debug.svg
+        </Button>
         {saveMsg && (
           <Alert severity={saveMsg.ok ? 'success' : 'error'} sx={{ py: 0, fontSize: 11 }}>
             {saveMsg.ok || saveMsg.err}
@@ -271,16 +370,25 @@ export default function PortsTab() {
       </Stack>
 
       <Divider />
-      {/* Export */}
-      <Typography variant="h6" sx={{ mt: 0.5 }}>Export</Typography>
+
+      {/* Export completed */}
+      <SectionLabel>Export Completed</SectionLabel>
       <TextField
-        fullWidth size="small" placeholder="output folder (default: ./completed)"
-        value={exportDir} onChange={e => setExportDir(e.target.value)}
+        fullWidth
+        size="small"
+        placeholder="output folder (default: ./completed)"
+        value={exportDir}
+        onChange={e => setExportDir(e.target.value)}
         sx={{ mt: 0.5, mb: 0.5 }}
         inputProps={{ style: { fontSize: 11 } }}
       />
-      <Button fullWidth variant="outlined" onClick={() => exportCompleted(exportDir)} sx={{ fontSize: 11, borderColor: '#9944ee', color: '#cc88ff' }}>
-        📤 Export Completed
+      <Button
+        fullWidth
+        variant="outlined"
+        onClick={() => exportCompleted(exportDir)}
+        sx={{ fontSize: 11, borderColor: '#9944ee', color: '#cc88ff' }}
+      >
+        Export Completed
       </Button>
       {exportMsg && (
         <Alert severity={exportMsg.ok ? 'success' : 'error'} sx={{ mt: 0.5, py: 0, fontSize: 11 }}>

@@ -24,7 +24,8 @@ function CrosshairMarker({ x, y, r, col, sw }) {
 function PortLabel({ x, y, r, col, tsw, label }) {
   return (
     <text x={x + r*1.15} y={y + r*0.5} fontSize={r*1.1} fill={col}
-      fontFamily="monospace" stroke="white" strokeWidth={tsw} paintOrder="stroke">
+      fontFamily="monospace" stroke="white" strokeWidth={tsw} paintOrder="stroke"
+      pointerEvents="none">
       {label}
     </text>
   );
@@ -53,7 +54,8 @@ function PortMarker({ port, idx, selected, markerMode, r, onMouseDown, onContext
         ))}
         <text x={x+zw/2} y={y+zh/2} fontSize={r} fill={col}
           textAnchor="middle" dominantBaseline="middle"
-          fontFamily="monospace" stroke="white" strokeWidth={tsw} paintOrder="stroke">
+          fontFamily="monospace" stroke="white" strokeWidth={tsw} paintOrder="stroke"
+          pointerEvents="none">
           {port.id}
         </text>
       </g>
@@ -110,16 +112,18 @@ export default function CanvasEditor() {
   const svgH = viewBox.h * zoom;
 
   // ── Zoom via wheel ─────────────────────────────────────────────────────────
+  // Use functional updater so we never capture stale `zoom` in the closure —
+  // this means the listener is registered exactly once (not on every zoom change).
   useEffect(() => {
     const el = wrapRef.current;
     if (!el) return;
     const onWheel = (e) => {
       e.preventDefault();
-      setZoom(zoom * (e.deltaY < 0 ? 1.15 : 1 / 1.15));
+      setZoom(z => z * (e.deltaY < 0 ? 1.15 : 1 / 1.15));
     };
     el.addEventListener('wheel', onWheel, { passive: false });
     return () => el.removeEventListener('wheel', onWheel);
-  }, [zoom, setZoom]);
+  }, [setZoom]); // no 'zoom' dep — listener never needs to re-register
 
   // ── Global mousemove / mouseup (for drag) ──────────────────────────────────
   useEffect(() => {
@@ -270,24 +274,60 @@ export default function CanvasEditor() {
 
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
-    <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, overflow: 'hidden', bgcolor: '#2a2a2a', p: 1, gap: 0.75 }}>
+    <Box sx={{
+      flex: 1,
+      display: 'flex',
+      flexDirection: 'column',
+      minWidth: 0,
+      overflow: 'hidden',
+      bgcolor: '#0f0f14',
+      p: 1,
+      gap: 0.75,
+    }}>
       {/* Status bar */}
-      <Typography sx={{ fontSize: 11, color: 'text.secondary', textAlign: 'center', flexShrink: 0 }}>
-        {useEditorStore(s => s.statusMsg)}
-      </Typography>
+      <Box sx={{ display: 'flex', justifyContent: 'center', flexShrink: 0 }}>
+        <Box sx={{
+          bgcolor: 'rgba(255,255,255,0.05)',
+          borderRadius: '999px',
+          px: 1.5,
+          py: 0.3,
+          border: '1px solid rgba(255,255,255,0.08)',
+          minHeight: 22,
+          display: 'flex',
+          alignItems: 'center',
+        }}>
+          <Typography sx={{
+            fontSize: 11,
+            color: 'text.secondary',
+            fontFamily: '"JetBrains Mono", "Cascadia Code", Consolas, monospace',
+            lineHeight: 1,
+          }}>
+            {useEditorStore(s => s.statusMsg) || '\u00a0'}
+          </Typography>
+        </Box>
+      </Box>
 
       {/* Canvas */}
-      <Box ref={wrapRef} sx={{ flex: 1, minHeight: 0, overflow: 'auto', boxShadow: 'inset 0 0 12px rgba(0,0,0,0.4)', bgcolor: '#3a3a3a',
-        '&::-webkit-scrollbar': { width: 8, height: 8 },
-        '&::-webkit-scrollbar-track': { bgcolor: '#2a2a2a' },
-        '&::-webkit-scrollbar-thumb': { bgcolor: '#555', borderRadius: 1 },
+      <Box ref={wrapRef} sx={{
+        flex: 1,
+        minHeight: 0,
+        overflow: 'auto',
+        boxShadow: 'inset 0 0 12px rgba(0,0,0,0.5)',
+        bgcolor: '#0f0f14',
+        backgroundImage: 'radial-gradient(rgba(255,255,255,0.03) 1px, transparent 1px)',
+        backgroundSize: '20px 20px',
+        borderRadius: '8px',
+        border: '1px solid rgba(255,255,255,0.05)',
+        '&::-webkit-scrollbar': { width: 5, height: 5 },
+        '&::-webkit-scrollbar-track': { bgcolor: 'transparent' },
+        '&::-webkit-scrollbar-thumb': { bgcolor: 'rgba(255,255,255,0.10)', borderRadius: '999px' },
       }}>
         <svg
           ref={svgRef}
           width={svgW}
           height={svgH}
           viewBox={`${viewBox.x} ${viewBox.y} ${viewBox.w} ${viewBox.h}`}
-          style={{ display: 'block', cursor: 'crosshair' }}
+          style={{ display: 'block', cursor: 'crosshair', userSelect: 'none' }}
           onDblClick={handleSvgDblClick}
           onClick={handleSvgClick}
         >
@@ -355,14 +395,26 @@ export default function CanvasEditor() {
         </svg>
       </Box>
 
-      {/* Hint bar */}
-      <Typography sx={{ fontSize: 10, color: '#555', textAlign: 'center', flexShrink: 0 }}>
-        Double-click to add&nbsp;|&nbsp;Drag to move&nbsp;|&nbsp;Right-click to delete&nbsp;|&nbsp;Scroll to zoom&nbsp;|&nbsp;Ctrl+click multi-select&nbsp;|&nbsp;Arrow keys nudge
-        {midState?.step === 1 && <>&nbsp;|&nbsp;<span style={{color:'#9C27B0'}}>Click first port…</span></>}
-        {midState?.step === 2 && <>&nbsp;|&nbsp;<span style={{color:'#9C27B0'}}>Click second port…</span></>}
-        {midState?.step === 3 && <>&nbsp;|&nbsp;<span style={{color:'#9C27B0'}}>Click canvas or Enter to place midpoint</span></>}
-        {matchMode && <>&nbsp;|&nbsp;<span style={{color:'#ffcc00'}}>{matchMode.firstIdx === null ? `Click source port to match ${matchMode.axis}…` : `Click target port…`}</span></>}
-      </Typography>
+      {/* Hint bar — floating pill */}
+      <Box sx={{ display: 'flex', justifyContent: 'center', flexShrink: 0 }}>
+        <Box sx={{
+          bgcolor: 'rgba(15,15,20,0.85)',
+          backdropFilter: 'blur(8px)',
+          borderRadius: '999px',
+          border: '1px solid rgba(255,255,255,0.07)',
+          px: 2,
+          py: 0.5,
+          width: 'fit-content',
+        }}>
+          <Typography sx={{ fontSize: 10, color: 'text.disabled', textAlign: 'center', lineHeight: 1.4 }}>
+            Double-click to add&nbsp;|&nbsp;Drag to move&nbsp;|&nbsp;Right-click to delete&nbsp;|&nbsp;Scroll to zoom&nbsp;|&nbsp;Ctrl+click multi-select&nbsp;|&nbsp;Arrow keys nudge
+            {midState?.step === 1 && <>&nbsp;|&nbsp;<span style={{color:'#9C27B0'}}>Click first port…</span></>}
+            {midState?.step === 2 && <>&nbsp;|&nbsp;<span style={{color:'#9C27B0'}}>Click second port…</span></>}
+            {midState?.step === 3 && <>&nbsp;|&nbsp;<span style={{color:'#9C27B0'}}>Click canvas or Enter to place midpoint</span></>}
+            {matchMode && <>&nbsp;|&nbsp;<span style={{color:'#ffcc00'}}>{matchMode.firstIdx === null ? `Click source port to match ${matchMode.axis}…` : `Click target port…`}</span></>}
+          </Typography>
+        </Box>
+      </Box>
     </Box>
   );
 }

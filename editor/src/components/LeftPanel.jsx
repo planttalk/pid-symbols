@@ -2,9 +2,10 @@ import { useMemo, useState, useEffect } from 'react';
 import {
   Box, Typography, TextField, Select, MenuItem, FormControl,
   LinearProgress, List, ListItemButton, ListItemText, Tooltip,
-  InputLabel,
+  InputLabel, InputAdornment,
 } from '@mui/material';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
+import SearchIcon from '@mui/icons-material/Search';
 import { useEditorStore } from '../store';
 
 export default function LeftPanel() {
@@ -47,76 +48,132 @@ export default function LeftPanel() {
 
   // Preview symbol (hovered)
   const previewSym = hover ? allSymbols.find(s => s.path === hover) : null;
-  const previewSrc = previewSym
-    ? `/api/symbol?path=${encodeURIComponent(previewSym.path)}`
-    : null;
 
   return (
     <Box sx={{
-      width: 240,
-      borderRight: '1px solid #444',
+      width: 248,
+      borderRight: '1px solid rgba(255,255,255,0.07)',
       display: 'flex',
       flexDirection: 'column',
       flexShrink: 0,
       overflow: 'hidden',
+      bgcolor: 'background.paper',
     }}>
       {/* Header */}
-      <Box sx={{ p: '8px', borderBottom: '1px solid #444', flexShrink: 0 }}>
-        <Typography variant="h6" sx={{ mb: 0.5 }}>Symbols</Typography>
+      <Box sx={{
+        px: 1.5, pt: 1.25, pb: 1,
+        borderBottom: '1px solid rgba(255,255,255,0.07)',
+        flexShrink: 0,
+      }}>
+        {/* Title row */}
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+          <Typography sx={{ fontSize: '0.8rem', fontWeight: 700, color: 'text.primary', lineHeight: 1 }}>
+            Symbol Studio
+          </Typography>
+          <Box sx={{
+            px: 0.75, py: 0.2,
+            bgcolor: 'rgba(129,140,248,0.15)',
+            borderRadius: '999px',
+            border: '1px solid rgba(129,140,248,0.25)',
+          }}>
+            <Typography sx={{ fontSize: '0.6rem', fontWeight: 700, color: 'primary.main', lineHeight: 1 }}>
+              {visible.length}
+            </Typography>
+          </Box>
+        </Box>
+
+        {/* Search field */}
         <TextField
-          fullWidth size="small" placeholder="Filter…"
+          fullWidth
+          size="small"
+          placeholder="Search symbols…"
           value={filterText}
           onChange={e => setFilter('filterText', e.target.value)}
-          inputProps={{ style: { fontSize: 11 } }}
+          InputProps={{
+            startAdornment: (
+              <InputAdornment position="start">
+                <SearchIcon sx={{ fontSize: 15, color: 'text.disabled' }} />
+              </InputAdornment>
+            ),
+            style: { fontSize: 12 },
+          }}
         />
       </Box>
 
       {/* Stats */}
-      <Box sx={{ px: 1, py: 0.5, borderBottom: '1px solid #333', flexShrink: 0 }}>
-        <Typography sx={{ fontSize: 10, color: 'text.secondary', mb: 0.3 }}>
-          {done} / {visible.length} complete ({pct}%)
-        </Typography>
+      <Box sx={{ px: 1.5, py: 0.75, borderBottom: '1px solid rgba(255,255,255,0.07)', flexShrink: 0 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.5 }}>
+          <Typography sx={{ fontSize: '0.6rem', fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'text.disabled' }}>
+            Progress
+          </Typography>
+          <Typography sx={{ fontSize: '0.65rem', color: 'text.secondary', fontVariantNumeric: 'tabular-nums' }}>
+            <Box component="span" sx={{ color: 'success.main', fontWeight: 600 }}>{done}</Box>
+            <Box component="span" sx={{ color: 'text.disabled' }}> / {visible.length}</Box>
+          </Typography>
+        </Box>
         <LinearProgress
-          variant="determinate" value={pct}
-          sx={{ height: 3, borderRadius: 1, bgcolor: '#3c3c3c',
-                '& .MuiLinearProgress-bar': { bgcolor: 'success.main' } }}
+          variant="determinate"
+          value={pct}
+          sx={{
+            '& .MuiLinearProgress-bar': { bgcolor: 'success.main' },
+          }}
         />
       </Box>
 
-      {/* Filters */}
-      <Box sx={{ px: 1, py: 0.5, borderBottom: '1px solid #333', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 0.5 }}>
-        <FormControl fullWidth size="small">
+      {/* Filters — side by side */}
+      <Box sx={{
+        px: 1.5, py: 0.75,
+        borderBottom: '1px solid rgba(255,255,255,0.07)',
+        flexShrink: 0,
+        display: 'flex',
+        gap: 0.75,
+      }}>
+        <FormControl size="small" sx={{ flex: 1, minWidth: 0 }}>
           <Select
-            displayEmpty value={filterSource}
+            displayEmpty
+            value={filterSource}
             onChange={e => setFilter('filterSource', e.target.value)}
             sx={{ fontSize: 11 }}
           >
-            <MenuItem value=""><em>All origins</em></MenuItem>
-            {sources.map(s => <MenuItem key={s} value={s} sx={{ fontSize: 11 }}>{s}</MenuItem>)}
+            <MenuItem value=""><em style={{ fontSize: 11 }}>All origins</em></MenuItem>
+            {sources.map(s => (
+              <MenuItem key={s} value={s} sx={{ fontSize: 11 }}>{s}</MenuItem>
+            ))}
           </Select>
         </FormControl>
-        <FormControl fullWidth size="small">
+        <FormControl size="small" sx={{ flex: 1, minWidth: 0 }}>
           <Select
-            displayEmpty value={filterStandard}
+            displayEmpty
+            value={filterStandard}
             onChange={e => setFilter('filterStandard', e.target.value)}
             sx={{ fontSize: 11 }}
           >
-            <MenuItem value=""><em>All standards</em></MenuItem>
-            {standards.map(s => <MenuItem key={s} value={s} sx={{ fontSize: 11 }}>{s}</MenuItem>)}
+            <MenuItem value=""><em style={{ fontSize: 11 }}>All standards</em></MenuItem>
+            {standards.map(s => (
+              <MenuItem key={s} value={s} sx={{ fontSize: 11 }}>{s}</MenuItem>
+            ))}
           </Select>
         </FormControl>
       </Box>
 
       {/* Symbol list */}
-      <Box sx={{ flex: 1, overflowY: 'auto' }}>
+      <Box sx={{ flex: 1, overflowY: 'auto', px: 0.5, py: 0.5 }}>
         {[...grouped.entries()].map(([std, syms]) => (
           <Box key={std}>
-            <Typography sx={{
-              fontSize: 9, color: 'text.disabled', px: 1, pt: 1, pb: 0.25,
-              textTransform: 'uppercase', letterSpacing: '0.8px',
-            }}>
-              {std}
-            </Typography>
+            {/* Group header */}
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, px: 1, pt: 1.25, pb: 0.4 }}>
+              <Box sx={{ width: 2, height: 8, borderRadius: 1, bgcolor: 'primary.main', flexShrink: 0, opacity: 0.6 }} />
+              <Typography sx={{
+                fontSize: '0.6rem', fontWeight: 700, letterSpacing: '0.1em',
+                textTransform: 'uppercase', color: 'text.disabled',
+              }}>
+                {std}
+              </Typography>
+              <Typography sx={{ fontSize: '0.6rem', color: 'text.disabled', ml: 'auto', flexShrink: 0 }}>
+                ({syms.length})
+              </Typography>
+            </Box>
+
             <List dense disablePadding>
               {syms.map(sym => (
                 <Tooltip
@@ -131,17 +188,30 @@ export default function LeftPanel() {
                     onClick={() => loadSymbol(sym.path)}
                     onMouseEnter={() => setHover(sym.path)}
                     onMouseLeave={() => setHover(null)}
-                    sx={{ py: 0.25, pl: 1.5, pr: 0.5 }}
+                    sx={{
+                      py: 0.3,
+                      pl: 1.25,
+                      pr: 0.5,
+                      transition: 'background 0.12s ease',
+                    }}
                   >
                     {sym.completed && (
-                      <CheckCircleIcon sx={{ fontSize: 10, color: 'success.main', mr: 0.5, flexShrink: 0 }} />
+                      <CheckCircleIcon sx={{ fontSize: 10, color: 'success.main', mr: 0.6, flexShrink: 0 }} />
                     )}
                     <ListItemText
                       primary={sym.name}
+                      secondary={sym.category || undefined}
                       primaryTypographyProps={{
                         fontSize: 12,
+                        fontWeight: sym.path === currentPath ? 600 : 400,
                         color: sym.completed ? 'success.light' : 'text.primary',
                         noWrap: true,
+                      }}
+                      secondaryTypographyProps={{
+                        fontSize: 9.5,
+                        color: 'text.disabled',
+                        noWrap: true,
+                        sx: { lineHeight: 1.3 },
                       }}
                     />
                   </ListItemButton>
@@ -154,14 +224,21 @@ export default function LeftPanel() {
 
       {/* SVG preview on hover */}
       <Box sx={{
-        flexShrink: 0, borderTop: '1px solid #444', bgcolor: '#252525',
-        display: 'flex', flexDirection: 'column', alignItems: 'center',
-        justifyContent: 'center', minHeight: 110, p: 0.5, gap: 0.5,
+        flexShrink: 0,
+        borderTop: '1px solid rgba(129,140,248,0.3)',
+        bgcolor: 'rgba(255,255,255,0.015)',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        minHeight: 120,
+        p: 0.75,
+        gap: 0.5,
       }}>
         {hover ? (
           <SymbolPreview path={hover} />
         ) : (
-          <Typography sx={{ fontSize: 10, color: '#555' }}>Hover to preview</Typography>
+          <Typography sx={{ fontSize: 10, color: 'text.disabled' }}>Hover to preview</Typography>
         )}
       </Box>
     </Box>
@@ -187,12 +264,24 @@ function SymbolPreview({ path }) {
     return () => { cancelled = true; };
   }, [path]);
 
-  if (!src) return <Typography sx={{ fontSize: 10, color: '#555' }}>Loading…</Typography>;
+  if (!src) return <Typography sx={{ fontSize: 10, color: 'text.disabled' }}>Loading…</Typography>;
   return (
     <>
-      <Box component="img" src={src} alt={name}
-        sx={{ maxWidth: 200, maxHeight: 90, objectFit: 'contain', bgcolor: 'white', borderRadius: 0.5, p: 0.25 }} />
-      <Typography sx={{ fontSize: 9, color: 'text.disabled', textAlign: 'center', maxWidth: 200 }} noWrap>
+      <Box
+        component="img"
+        src={src}
+        alt={name}
+        sx={{
+          maxWidth: 210,
+          maxHeight: 94,
+          objectFit: 'contain',
+          bgcolor: 'white',
+          borderRadius: '6px',
+          p: 0.25,
+          boxShadow: '0 2px 12px rgba(0,0,0,0.4)',
+        }}
+      />
+      <Typography sx={{ fontSize: 9, color: 'text.disabled', textAlign: 'center', maxWidth: 210 }} noWrap>
         {name}
       </Typography>
     </>

@@ -46,7 +46,7 @@ function EffectRow({ name, label, value, onChange, onToggle, enabled }) {
         onChange={(_, v) => onChange(name, v)}
         sx={{ flex: 1, mx: 0.5 }}
       />
-      <Typography sx={{ fontSize: 10, color: 'text.secondary', width: 28, textAlign: 'right', fontFamily: 'monospace' }}>
+      <Typography sx={{ fontSize: 10, color: 'text.secondary', width: 28, textAlign: 'right', fontFamily: '"JetBrains Mono", "Cascadia Code", Consolas, monospace' }}>
         {enabled ? value.toFixed(2) : '—'}
       </Typography>
     </Stack>
@@ -57,7 +57,7 @@ function EffectRow({ name, label, value, onChange, onToggle, enabled }) {
 function EffectGroup({ group, augEffects, onChange, onToggle }) {
   const activeCount = group.effects.filter(e => augEffects[e.name] !== undefined).length;
   return (
-    <Accordion disableGutters defaultExpanded={false}>
+    <Accordion disableGutters defaultExpanded={false} sx={{ mb: 0.5 }}>
       <AccordionSummary expandIcon={<ExpandMoreIcon sx={{ fontSize: 14 }} />}>
         <Typography sx={{ fontSize: 11, color: 'secondary.main' }}>{group.label}</Typography>
         {activeCount > 0 && (
@@ -113,13 +113,27 @@ function Lightbox({ images, idx, onClose, onGoto }) {
         {/* Inner card — stop propagation so clicking image doesn't close */}
         <Box
           onClick={e => e.stopPropagation()}
-          sx={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', maxWidth: '92vw' }}
+          sx={{
+            position: 'relative',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            maxWidth: '92vw',
+            bgcolor: '#0f0f14',
+            borderRadius: 2,
+            p: 2,
+          }}
         >
           {/* Close button */}
           <IconButton
             onClick={onClose}
             size="small"
-            sx={{ position: 'absolute', top: -36, right: 0, color: 'white', bgcolor: 'rgba(255,255,255,0.08)', '&:hover': { bgcolor: 'rgba(255,255,255,0.18)' } }}
+            sx={{
+              position: 'absolute', top: 8, right: 8,
+              color: 'white',
+              bgcolor: 'rgba(255,255,255,0.08)',
+              '&:hover': { bgcolor: 'rgba(255,255,255,0.18)' },
+            }}
           >
             <CloseIcon sx={{ fontSize: 18 }} />
           </IconButton>
@@ -134,7 +148,7 @@ function Lightbox({ images, idx, onClose, onGoto }) {
               maxHeight: '80vh',
               objectFit: 'contain',
               bgcolor: 'white',
-              borderRadius: 1,
+              borderRadius: 2,
               boxShadow: '0 8px 40px rgba(0,0,0,0.6)',
               display: 'block',
             }}
@@ -144,21 +158,33 @@ function Lightbox({ images, idx, onClose, onGoto }) {
           <Stack direction="row" alignItems="center" justifyContent="space-between"
             sx={{ mt: 1.5, width: '100%', px: 0.5 }}>
             <IconButton
+              size="large"
               disabled={idx === 0}
               onClick={() => onGoto(idx - 1)}
-              sx={{ color: 'white', bgcolor: 'rgba(255,255,255,0.08)', '&:hover': { bgcolor: 'rgba(255,255,255,0.18)' }, '&.Mui-disabled': { color: 'rgba(255,255,255,0.2)' } }}
+              sx={{
+                color: 'white',
+                bgcolor: 'rgba(255,255,255,0.08)',
+                '&:hover': { bgcolor: 'rgba(255,255,255,0.18)' },
+                '&.Mui-disabled': { color: 'rgba(255,255,255,0.2)' },
+              }}
             >
               <ChevronLeftIcon />
             </IconButton>
 
-            <Typography sx={{ color: 'rgba(255,255,255,0.7)', fontSize: 12, fontFamily: 'monospace' }}>
+            <Typography sx={{ color: 'rgba(255,255,255,0.7)', fontSize: 12, fontFamily: '"JetBrains Mono", "Cascadia Code", Consolas, monospace' }}>
               {img.label} &nbsp;·&nbsp; {idx + 1} / {images.length}
             </Typography>
 
             <IconButton
+              size="large"
               disabled={idx === images.length - 1}
               onClick={() => onGoto(idx + 1)}
-              sx={{ color: 'white', bgcolor: 'rgba(255,255,255,0.08)', '&:hover': { bgcolor: 'rgba(255,255,255,0.18)' }, '&.Mui-disabled': { color: 'rgba(255,255,255,0.2)' } }}
+              sx={{
+                color: 'white',
+                bgcolor: 'rgba(255,255,255,0.08)',
+                '&:hover': { bgcolor: 'rgba(255,255,255,0.18)' },
+                '&.Mui-disabled': { color: 'rgba(255,255,255,0.2)' },
+              }}
             >
               <ChevronRightIcon />
             </IconButton>
@@ -195,11 +221,19 @@ function SmartGrid({ images, label }) {
   return (
     <Box sx={{ mt: 1 }}>
       <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 0.5 }}>
-        <Typography sx={{ fontSize: 11, color: 'text.secondary' }}>
+        <Typography sx={{
+          fontSize: 11,
+          color: 'text.secondary',
+          fontFamily: 'monospace',
+          borderBottom: '1px solid rgba(255,255,255,0.07)',
+          pb: 0.5,
+          mb: 1,
+          width: '100%',
+        }}>
           {label} &nbsp;·&nbsp; {n} image{n !== 1 ? 's' : ''}
         </Typography>
         {needsPaging && (
-          <Stack direction="row" alignItems="center" gap={0.25}>
+          <Stack direction="row" alignItems="center" gap={0.25} sx={{ flexShrink: 0, ml: 1 }}>
             <IconButton
               size="small" disabled={page === 0}
               onClick={() => setPage(p => p - 1)}
@@ -436,7 +470,12 @@ export default function AugmentTab() {
             startIcon={previewing ? <CircularProgress size={12} /> : <VisibilityIcon sx={{ fontSize: 14 }} />}
             onClick={handlePreview}
             disabled={!currentPath || busy}
-            sx={{ fontSize: 11, borderColor: '#4ec9b0', color: '#4ec9b0' }}
+            sx={{
+              fontSize: 11,
+              borderColor: '#4ec9b0',
+              color: '#4ec9b0',
+              borderRadius: '6px',
+            }}
           >
             {previewing ? 'Previewing…' : `Preview ${count}`}
           </Button>
@@ -445,7 +484,12 @@ export default function AugmentTab() {
             startIcon={<ShuffleIcon sx={{ fontSize: 14 }} />}
             onClick={handleRandomize}
             disabled={busy}
-            sx={{ fontSize: 11, borderColor: '#cc88ff', color: '#cc88ff' }}
+            sx={{
+              fontSize: 11,
+              borderColor: '#cc88ff',
+              color: '#cc88ff',
+              borderRadius: '6px',
+            }}
           >
             Randomize
           </Button>
@@ -457,6 +501,7 @@ export default function AugmentTab() {
             type="number" size="small"
             value={size} onChange={e => setSize(+e.target.value || 512)}
             inputProps={{ min: 64, max: 2048, step: 64, style: { width: 64, fontSize: 11 } }}
+            sx={{ '& .MuiOutlinedInput-root': { fontFamily: '"JetBrains Mono", "Cascadia Code", Consolas, monospace' } }}
           />
           <Typography sx={{ fontSize: 10, color: 'text.disabled' }}>px</Typography>
         </Stack>
@@ -486,6 +531,7 @@ export default function AugmentTab() {
             type="number" size="small"
             value={count} onChange={e => setCount(Math.max(1, +e.target.value || 1))}
             inputProps={{ min: 1, max: 200, style: { width: 56, fontSize: 11 } }}
+            sx={{ '& .MuiOutlinedInput-root': { fontFamily: '"JetBrains Mono", "Cascadia Code", Consolas, monospace' } }}
           />
         </Stack>
         <TextField
@@ -499,7 +545,13 @@ export default function AugmentTab() {
           startIcon={saving ? <CircularProgress size={12} /> : <SaveIcon sx={{ fontSize: 14 }} />}
           disabled={!currentPath || busy}
           onClick={handleGenerate}
-          sx={{ fontSize: 11, borderColor: '#4ec994', color: '#4ec994', mb: 0.5 }}
+          sx={{
+            fontSize: 11,
+            borderColor: '#4ec994',
+            color: '#4ec994',
+            borderRadius: '6px',
+            mb: 0.5,
+          }}
         >
           {saving ? `Saving ${count} image(s)…` : `Generate & Save ${count}`}
         </Button>
@@ -513,9 +565,9 @@ export default function AugmentTab() {
         <Divider sx={{ my: 1 }} />
 
         {/* ── Batch section ─────────────────────────────────────────────────── */}
-        <Accordion disableGutters defaultExpanded={false}>
+        <Accordion disableGutters defaultExpanded={false} sx={{ mb: 0.5 }}>
           <AccordionSummary expandIcon={<ExpandMoreIcon sx={{ fontSize: 14 }} />}>
-            <Typography sx={{ fontSize: 11, color: 'secondary.main' }}>Batch Augmentation</Typography>
+            <Typography sx={{ fontSize: 11, color: '#fb923c' }}>Batch Augmentation</Typography>
             {(batchSource || batchStandard) && (
               <Typography sx={{ fontSize: 10, color: '#4ec9b0', ml: 1 }}>
                 ({batchMatchCount} symbol{batchMatchCount !== 1 ? 's' : ''})
@@ -570,7 +622,13 @@ export default function AugmentTab() {
               startIcon={batchRunning ? <CircularProgress size={12} /> : <SaveIcon sx={{ fontSize: 14 }} />}
               disabled={batchMatchCount === 0 || batchRunning || previewing || saving}
               onClick={handleBatch}
-              sx={{ fontSize: 11, borderColor: '#ff9800', color: '#ff9800', mb: batchRunning || batchResult ? 0.75 : 0 }}
+              sx={{
+                fontSize: 11,
+                borderColor: '#ff9800',
+                color: '#ff9800',
+                borderRadius: '6px',
+                mb: batchRunning || batchResult ? 0.75 : 0,
+              }}
             >
               {batchRunning
                 ? `Processing ${batchProgress ? `${batchProgress.current} / ${batchProgress.total}` : '…'}`
@@ -588,7 +646,7 @@ export default function AugmentTab() {
                     '& .MuiLinearProgress-bar': { bgcolor: '#ff9800' },
                   }}
                 />
-                <Typography sx={{ fontSize: 10, color: 'text.disabled', fontFamily: 'monospace' }} noWrap>
+                <Typography sx={{ fontSize: 10, color: 'text.disabled', fontFamily: '"JetBrains Mono", "Cascadia Code", Consolas, monospace' }} noWrap>
                   {batchProgress.name}
                   {batchProgress.saved != null && (
                     <> &nbsp;·&nbsp; {batchProgress.saved} saved</>

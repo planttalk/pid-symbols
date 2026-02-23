@@ -64,4 +64,5 @@ exported/
 node_modules/
 
 # Augmented symbols
+augmented/
 *-augmented/

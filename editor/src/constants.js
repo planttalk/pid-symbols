@@ -4,10 +4,6 @@ export const PORT_TYPES = [
   { id: 'in_out',    label: 'In/Out',    color: '#009688' },
   { id: 'signal',    label: 'Signal',    color: '#9C27B0' },
   { id: 'process',   label: 'Process',   color: '#FF9800' },
-  { id: 'north',     label: 'North',     color: '#4CAF50' },
-  { id: 'south',     label: 'South',     color: '#4CAF50' },
-  { id: 'east',      label: 'East',      color: '#4CAF50' },
-  { id: 'west',      label: 'West',      color: '#4CAF50' },
   { id: 'reference', label: 'Ref.',      color: '#9E9E9E' },
   { id: 'custom',    label: 'Custom',    color: '#607D8B' },
 ];

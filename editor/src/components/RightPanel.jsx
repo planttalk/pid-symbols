@@ -1,4 +1,6 @@
 import { Box, Tabs, Tab } from '@mui/material';
+import TuneIcon from '@mui/icons-material/Tune';
+import AutoFixHighIcon from '@mui/icons-material/AutoFixHigh';
 import { useEditorStore } from '../store';
 import PortsTab from './PortsTab';
 import AugmentTab from './AugmentTab';
@@ -9,7 +11,6 @@ export default function RightPanel() {
   const handleTabChange = (_, newVal) => {
     setActiveTab(newVal);
     if (newVal === 1 && currentPath) {
-      // Auto-preview when switching to Augment tab
       previewAugment?.();
     }
   };
@@ -17,25 +18,76 @@ export default function RightPanel() {
   return (
     <Box sx={{
       width: 300,
-      borderLeft: '1px solid #444',
+      borderLeft: '1px solid rgba(255,255,255,0.07)',
       flexShrink: 0,
       display: 'flex',
       flexDirection: 'column',
       overflow: 'hidden',
+      bgcolor: 'background.paper',
     }}>
-      <Tabs
-        value={activeTab}
-        onChange={handleTabChange}
-        sx={{
-          flexShrink: 0,
-          borderBottom: '1px solid #444',
-          minHeight: 36,
-          '& .MuiTabs-indicator': { bgcolor: 'secondary.main' },
-        }}
-      >
-        <Tab label="Ports"   sx={{ flex: 1 }} />
-        <Tab label="Augment" sx={{ flex: 1 }} />
-      </Tabs>
+      {/* Tab bar */}
+      <Box sx={{
+        bgcolor: 'background.paper',
+        borderBottom: '1px solid rgba(255,255,255,0.07)',
+        flexShrink: 0,
+      }}>
+        {/* Segmented control wrapper */}
+        <Box sx={{
+          bgcolor: 'rgba(255,255,255,0.04)',
+          borderRadius: '8px',
+          m: 1,
+          p: '3px',
+          display: 'flex',
+        }}>
+          <Tabs
+            value={activeTab}
+            onChange={handleTabChange}
+            sx={{
+              flex: 1,
+              minHeight: 32,
+              '& .MuiTabs-flexContainer': { gap: '2px' },
+              '& .MuiTabs-indicator': { display: 'none' },
+            }}
+          >
+            <Tab
+              label="Ports"
+              icon={<TuneIcon sx={{ fontSize: 13 }} />}
+              iconPosition="start"
+              sx={{
+                flex: 1,
+                minHeight: 32,
+                py: 0.5,
+                px: 1,
+                borderRadius: '6px',
+                gap: 0.5,
+                transition: 'background 0.15s ease',
+                '&.Mui-selected': {
+                  bgcolor: 'rgba(129,140,248,0.18)',
+                  color: 'primary.main',
+                },
+              }}
+            />
+            <Tab
+              label="Augment"
+              icon={<AutoFixHighIcon sx={{ fontSize: 13 }} />}
+              iconPosition="start"
+              sx={{
+                flex: 1,
+                minHeight: 32,
+                py: 0.5,
+                px: 1,
+                borderRadius: '6px',
+                gap: 0.5,
+                transition: 'background 0.15s ease',
+                '&.Mui-selected': {
+                  bgcolor: 'rgba(129,140,248,0.18)',
+                  color: 'primary.main',
+                },
+              }}
+            />
+          </Tabs>
+        </Box>
+      </Box>
 
       <Box sx={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
         {activeTab === 0 && <PortsTab />}
