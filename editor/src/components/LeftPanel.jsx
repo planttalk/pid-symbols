@@ -4,13 +4,15 @@ import {
   LinearProgress, List, ListItemButton, ListItemText, Tooltip,
   InputLabel, InputAdornment,
 } from '@mui/material';
-import CheckCircleIcon from '@mui/icons-material/CheckCircle';
-import SearchIcon from '@mui/icons-material/Search';
+import CheckCircleIcon   from '@mui/icons-material/CheckCircle';
+import BlockIcon         from '@mui/icons-material/Block';
+import ContentCopyIcon   from '@mui/icons-material/ContentCopy';
+import SearchIcon        from '@mui/icons-material/Search';
 import { useEditorStore } from '../store';
 
 export default function LeftPanel() {
   const {
-    allSymbols, filterSource, filterStandard, filterText, currentPath,
+    allSymbols, filterSource, filterStandard, filterText, filterFlag, currentPath,
     loadSymbol, setFilter,
   } = useEditorStore();
 
@@ -26,13 +28,18 @@ export default function LeftPanel() {
     return allSymbols.filter(s => {
       if (filterSource   && s.source   !== filterSource)   return false;
       if (filterStandard && s.standard !== filterStandard) return false;
+      if (filterFlag === 'unrelated' && s.flag !== 'unrelated') return false;
+      if (filterFlag === 'similar'   && s.flag !== 'similar')   return false;
+      if (filterFlag === 'flagged'   && !s.flag)                return false;
+      if (filterFlag === 'clean'     && s.flag)                 return false;
       if (q && !s.name.toLowerCase().includes(q) && !s.path.toLowerCase().includes(q)) return false;
       return true;
     });
-  }, [allSymbols, filterSource, filterStandard, filterText]);
+  }, [allSymbols, filterSource, filterStandard, filterText, filterFlag]);
 
   // Stats for filtered list
-  const done = visible.filter(s => s.completed).length;
+  const done       = visible.filter(s => s.completed).length;
+  const flaggedCnt = visible.filter(s => s.flag).length;
   const pct  = visible.length ? Math.round(done / visible.length * 100) : 0;
 
   // Group by standard
@@ -106,10 +113,17 @@ export default function LeftPanel() {
           <Typography sx={{ fontSize: '0.6rem', fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'text.disabled' }}>
             Progress
           </Typography>
-          <Typography sx={{ fontSize: '0.65rem', color: 'text.secondary', fontVariantNumeric: 'tabular-nums' }}>
-            <Box component="span" sx={{ color: 'success.main', fontWeight: 600 }}>{done}</Box>
-            <Box component="span" sx={{ color: 'text.disabled' }}> / {visible.length}</Box>
-          </Typography>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            {flaggedCnt > 0 && (
+              <Typography sx={{ fontSize: '0.6rem', color: '#f59e0b' }}>
+                {flaggedCnt} flagged
+              </Typography>
+            )}
+            <Typography sx={{ fontSize: '0.65rem', color: 'text.secondary', fontVariantNumeric: 'tabular-nums' }}>
+              <Box component="span" sx={{ color: 'success.main', fontWeight: 600 }}>{done}</Box>
+              <Box component="span" sx={{ color: 'text.disabled' }}> / {visible.length}</Box>
+            </Typography>
+          </Box>
         </Box>
         <LinearProgress
           variant="determinate"
@@ -120,38 +134,55 @@ export default function LeftPanel() {
         />
       </Box>
 
-      {/* Filters — side by side */}
+      {/* Filters */}
       <Box sx={{
         px: 1.5, py: 0.75,
         borderBottom: '1px solid rgba(255,255,255,0.07)',
         flexShrink: 0,
         display: 'flex',
-        gap: 0.75,
+        flexDirection: 'column',
+        gap: 0.5,
       }}>
-        <FormControl size="small" sx={{ flex: 1, minWidth: 0 }}>
+        <Box sx={{ display: 'flex', gap: 0.75 }}>
+          <FormControl size="small" sx={{ flex: 1, minWidth: 0 }}>
+            <Select
+              displayEmpty
+              value={filterSource}
+              onChange={e => setFilter('filterSource', e.target.value)}
+              sx={{ fontSize: 11 }}
+            >
+              <MenuItem value=""><em style={{ fontSize: 11 }}>All origins</em></MenuItem>
+              {sources.map(s => (
+                <MenuItem key={s} value={s} sx={{ fontSize: 11 }}>{s}</MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+          <FormControl size="small" sx={{ flex: 1, minWidth: 0 }}>
+            <Select
+              displayEmpty
+              value={filterStandard}
+              onChange={e => setFilter('filterStandard', e.target.value)}
+              sx={{ fontSize: 11 }}
+            >
+              <MenuItem value=""><em style={{ fontSize: 11 }}>All standards</em></MenuItem>
+              {standards.map(s => (
+                <MenuItem key={s} value={s} sx={{ fontSize: 11 }}>{s}</MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+        </Box>
+        <FormControl size="small" fullWidth>
           <Select
             displayEmpty
-            value={filterSource}
-            onChange={e => setFilter('filterSource', e.target.value)}
+            value={filterFlag}
+            onChange={e => setFilter('filterFlag', e.target.value)}
             sx={{ fontSize: 11 }}
           >
-            <MenuItem value=""><em style={{ fontSize: 11 }}>All origins</em></MenuItem>
-            {sources.map(s => (
-              <MenuItem key={s} value={s} sx={{ fontSize: 11 }}>{s}</MenuItem>
-            ))}
-          </Select>
-        </FormControl>
-        <FormControl size="small" sx={{ flex: 1, minWidth: 0 }}>
-          <Select
-            displayEmpty
-            value={filterStandard}
-            onChange={e => setFilter('filterStandard', e.target.value)}
-            sx={{ fontSize: 11 }}
-          >
-            <MenuItem value=""><em style={{ fontSize: 11 }}>All standards</em></MenuItem>
-            {standards.map(s => (
-              <MenuItem key={s} value={s} sx={{ fontSize: 11 }}>{s}</MenuItem>
-            ))}
+            <MenuItem value=""><em style={{ fontSize: 11 }}>All flags</em></MenuItem>
+            <MenuItem value="flagged"   sx={{ fontSize: 11 }}>⚑ Flagged (any)</MenuItem>
+            <MenuItem value="unrelated" sx={{ fontSize: 11 }}>🚫 Unrelated</MenuItem>
+            <MenuItem value="similar"   sx={{ fontSize: 11 }}>≈ Similar / Duplicate</MenuItem>
+            <MenuItem value="clean"     sx={{ fontSize: 11 }}>✓ Not flagged</MenuItem>
           </Select>
         </FormControl>
       </Box>
@@ -198,13 +229,22 @@ export default function LeftPanel() {
                     {sym.completed && (
                       <CheckCircleIcon sx={{ fontSize: 10, color: 'success.main', mr: 0.6, flexShrink: 0 }} />
                     )}
+                    {sym.flag === 'unrelated' && (
+                      <BlockIcon sx={{ fontSize: 10, color: '#ef4444', mr: 0.4, flexShrink: 0 }} />
+                    )}
+                    {sym.flag === 'similar' && (
+                      <ContentCopyIcon sx={{ fontSize: 10, color: '#f59e0b', mr: 0.4, flexShrink: 0 }} />
+                    )}
                     <ListItemText
                       primary={sym.name}
                       secondary={sym.category || undefined}
                       primaryTypographyProps={{
                         fontSize: 12,
                         fontWeight: sym.path === currentPath ? 600 : 400,
-                        color: sym.completed ? 'success.light' : 'text.primary',
+                        color: sym.flag === 'unrelated' ? '#ef4444'
+                             : sym.flag === 'similar'   ? '#f59e0b'
+                             : sym.completed            ? 'success.light'
+                             : 'text.primary',
                         noWrap: true,
                       }}
                       secondaryTypographyProps={{

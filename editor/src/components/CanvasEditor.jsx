@@ -2,6 +2,7 @@ import { useRef, useEffect, useCallback } from 'react';
 import { Box, Typography } from '@mui/material';
 import { useEditorStore } from '../store';
 import { portColor } from '../constants';
+import CanvasDock from './CanvasDock';
 
 // ── Coordinate helper ────────────────────────────────────────────────────────
 function toSvgCoords(svg, clientX, clientY) {
@@ -119,7 +120,11 @@ export default function CanvasEditor() {
     if (!el) return;
     const onWheel = (e) => {
       e.preventDefault();
-      setZoom(z => z * (e.deltaY < 0 ? 1.15 : 1 / 1.15));
+      const factor = e.deltaY < 0 ? 1.15 : 1 / 1.15;
+      // Use getState() to read current zoom — avoids capturing stale closure
+      // AND avoids passing a function to setZoom (which is not a Zustand set, so
+      // it would receive the function as its argument and produce NaN).
+      setZoom(useEditorStore.getState().zoom * factor);
     };
     el.addEventListener('wheel', onWheel, { passive: false });
     return () => el.removeEventListener('wheel', onWheel);
@@ -246,7 +251,8 @@ export default function CanvasEditor() {
     const y  = +snapVal(pt.y).toFixed(2);
     const pt2 = { id: `port-${Date.now()}`, type: portType, x, y, zone: null, locked: false };
     addPort(pt2);
-    selectPort(useEditorStore.getState().ports.length, false);
+    // addPort is synchronous in Zustand; new port is at (length - 1)
+    selectPort(useEditorStore.getState().ports.length - 1, false);
   }, [currentPath, midState, portType, snapVal, addPort, selectPort]);
 
   // ── SVG background click (deselect / confirm midpoint) ────────────────────
@@ -393,6 +399,11 @@ export default function CanvasEditor() {
             ))}
           </g>
         </svg>
+      </Box>
+
+      {/* Dock toolbar */}
+      <Box sx={{ display: 'flex', justifyContent: 'center', flexShrink: 0, px: 0.5 }}>
+        <CanvasDock />
       </Box>
 
       {/* Hint bar — floating pill */}

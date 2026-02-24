@@ -6,6 +6,7 @@ export const useEditorStore = create((set, get) => ({
   filterSource:  '',
   filterStandard:'',
   filterText:    '',
+  filterFlag:    '',  // '' | 'unrelated' | 'similar' | 'flagged' | 'clean'
 
   // ── Loaded symbol ─────────────────────────────────────────────────────────
   currentPath:      null,
@@ -230,6 +231,27 @@ export const useEditorStore = create((set, get) => ({
       });
       set({ saveMsg: res.ok ? { ok: '✓ _debug.svg written' } : { err: '✗ ' + await res.text() } });
     } catch (e) { set({ saveMsg: { err: '✗ ' + e.message } }); }
+  },
+
+  flagSymbol: async (flag) => {
+    const { currentPath, symbolMeta } = get();
+    if (!currentPath) return;
+    // Toggle: clicking the same flag again clears it
+    const newFlag = symbolMeta?.flag === flag ? null : flag;
+    try {
+      const res = await fetch('/api/flag', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: currentPath, flag: newFlag }),
+      });
+      if (res.ok) {
+        set(s => ({
+          symbolMeta: { ...s.symbolMeta, flag: newFlag },
+          allSymbols: s.allSymbols.map(sym =>
+            sym.path === currentPath ? { ...sym, flag: newFlag } : sym
+          ),
+        }));
+      }
+    } catch (e) { console.error('flagSymbol:', e); }
   },
 
   exportCompleted: async (dir) => {

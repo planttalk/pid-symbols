@@ -21,14 +21,24 @@ export const NS = 'http://www.w3.org/2000/svg';
 
 export const EFFECT_GROUPS = [
   {
+    label: 'Aged',
+    effects: [
+      { name: 'aged_light',   label: 'Aged – Light'   },
+      { name: 'aged_heavy',   label: 'Aged – Heavy'   },
+      { name: 'aged_brittle', label: 'Aged – Brittle' },
+    ],
+  },
+  {
     label: 'Physical',
     effects: [
       { name: 'yellowing',      label: 'Yellowing'      },
       { name: 'foxing',         label: 'Foxing'         },
       { name: 'crease',         label: 'Crease'         },
+      { name: 'wrinkle',        label: 'Wrinkle'        },
       { name: 'water_stain',    label: 'Water Stain'    },
       { name: 'edge_wear',      label: 'Edge Wear'      },
       { name: 'fingerprint',    label: 'Fingerprint'    },
+      { name: 'pencil_marks',   label: 'Pencil Marks'   },
       { name: 'binding_shadow', label: 'Binding Shadow' },
       { name: 'bleed_through',  label: 'Bleed Through'  },
       { name: 'hole_punch',     label: 'Hole Punch'     },
@@ -75,6 +85,13 @@ export const EFFECT_GROUPS = [
       { name: 'motion_streak',     label: 'Motion Streak'     },
       { name: 'binarization',      label: 'Binarization'      },
       { name: 'pixelation',        label: 'Pixelation'        },
+    ],
+  },
+  {
+    label: 'Reproduction',
+    effects: [
+      { name: 'photocopy', label: 'Photocopy' },
+      { name: 'fax_lines', label: 'Fax Lines' },
     ],
   },
 ];

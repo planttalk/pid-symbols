@@ -198,6 +198,18 @@ class Handler(http.server.BaseHTTPRequestHandler):
         elif p == "/api/augment-batch":
             self._sse_stream(_augment_batch(body))
 
+        elif p == "/api/flag":
+            ok, msg = _patch_meta(body.get("path"), {"flag": body.get("flag")})
+            if ok: self._send("ok")
+            else:  self._error(msg, 500)
+
+        elif p == "/api/augment-combo":
+            result, err = _augment_combo(body)
+            if result is not None:
+                self._json(result)
+            else:
+                self._error(err, 500)
+
         else:
             self._error("Not found", 404)
 
@@ -294,9 +306,11 @@ def _symbols_from_registry(registry: dict) -> list[dict]:
             cat_from_id = parts[1] if len(parts) > 1 else ""
 
         completed = False
+        flag      = None
         try:
             sym_data  = json.loads(json_path.read_text(encoding="utf-8"))
             completed = bool(sym_data.get("completed", False))
+            flag      = sym_data.get("flag", None)  # 'unrelated' | 'similar' | None
         except (json.JSONDecodeError, OSError):
             pass
         source = parts[0] if len(parts) == 4 else ""
@@ -307,6 +321,7 @@ def _symbols_from_registry(registry: dict) -> list[dict]:
             "category":  sym.get("category", cat_from_id),
             "source":    source,
             "completed": completed,
+            "flag":      flag,
         })
     return results
 
@@ -321,9 +336,11 @@ def _symbols_from_scan() -> list[dict]:
         rel   = json_path.relative_to(SYMBOLS_ROOT)
         parts = rel.parts
         completed = False
+        flag      = None
         try:
             sym_data  = json.loads(json_path.read_text(encoding="utf-8"))
             completed = bool(sym_data.get("completed", False))
+            flag      = sym_data.get("flag", None)
         except (json.JSONDecodeError, OSError):
             pass
         id_parts = rel.with_suffix("").parts
@@ -335,6 +352,7 @@ def _symbols_from_scan() -> list[dict]:
             "category":  parts[1] if len(parts) >= 2 else "",
             "source":    source,
             "completed": completed,
+            "flag":      flag,
         })
     return results
 
@@ -522,6 +540,37 @@ def _export_completed(output_dir_str: str) -> dict:
     }
 
 
+def _patch_meta(rel: str | None, updates: dict) -> tuple[bool, str]:
+    """Patch specific fields in a symbol's metadata JSON.
+
+    Pass ``None`` as a value to remove the key from the JSON.
+    """
+    global _symbols_cache
+    if not rel:
+        return False, "missing path"
+    base = _safe_path(rel)
+    if base is None:
+        return False, "invalid path"
+    json_path = base.with_suffix(".json")
+    if not json_path.exists():
+        return False, f"JSON not found: {json_path}"
+    try:
+        meta = json.loads(json_path.read_text(encoding="utf-8"))
+        for k, v in updates.items():
+            if v is None:
+                meta.pop(k, None)
+            else:
+                meta[k] = v
+        json_path.write_text(
+            json.dumps(meta, indent=2, ensure_ascii=False) + "\n",
+            encoding="utf-8",
+        )
+        _symbols_cache = None
+        return True, ""
+    except OSError as exc:
+        return False, str(exc)
+
+
 def _augment_preview(body: dict) -> tuple[dict | None, str]:
     """Render SVG → N augmented PNGs in memory, return base64 list.
 
@@ -567,7 +616,9 @@ def _augment_preview(body: dict) -> tuple[dict | None, str]:
             if randomize_per:
                 n      = _random.randint(3, 7)
                 picked = _random.sample(_APPLY_ORDER, min(n, len(_APPLY_ORDER)))
-                varied = {name: round(_random.uniform(0.2, 0.9), 2) for name in picked}
+                # Cap at 0.65 so aggressive effects (pixelation, over/underexpose)
+                # never fully obscure the symbol when fully randomised.
+                varied = {name: round(_random.uniform(0.15, 0.65), 2) for name in picked}
             elif effects:
                 varied = {
                     name: float(np.clip(intensity * _random.uniform(0.7, 1.3), 0.0, 1.0))
@@ -642,7 +693,7 @@ def _augment_generate(body: dict) -> tuple[dict | None, str]:
                 # Each image: independent random subset of ALL effects
                 n      = _random.randint(3, 7)
                 picked = _random.sample(_APPLY_ORDER, min(n, len(_APPLY_ORDER)))
-                varied = {name: round(_random.uniform(0.2, 0.9), 2) for name in picked}
+                varied = {name: round(_random.uniform(0.15, 0.65), 2) for name in picked}
             else:
                 # Vary the supplied effects ±30 %
                 varied = {
@@ -750,7 +801,7 @@ def _augment_batch(body: dict):
                 if rand_per:
                     n      = _random.randint(3, 7)
                     picked = _random.sample(_APPLY_ORDER, min(n, len(_APPLY_ORDER)))
-                    varied = {nm: round(_random.uniform(0.2, 0.9), 2) for nm in picked}
+                    varied = {nm: round(_random.uniform(0.15, 0.65), 2) for nm in picked}
                 elif effects:
                     varied = {
                         nm: float(np.clip(intensity * _random.uniform(0.7, 1.3), 0.0, 1.0))
@@ -776,6 +827,60 @@ def _augment_batch(body: dict):
     yield {"type": "done", "processed": processed, "saved": saved,
            "skipped": skipped, "errors": errors,
            "output_dir": str(out_dir.resolve())}
+
+
+def _augment_combo(body: dict) -> tuple[dict | None, str]:
+    """Generate all 1-, 2-, and 3-effect combinations of the selected effects.
+
+    Returns a list of ``{src, label}`` objects — one per combination — so the
+    frontend can display every combination in a grid.  Limits to C(n,1..3) so
+    the count stays manageable even with many effects enabled.
+    """
+    import base64
+    import io as _io
+    import itertools
+
+    rel       = body.get("path", "")
+    effects   = {k: float(v) for k, v in body.get("effects", {}).items() if float(v) > 0}
+    size      = max(64, min(2048, int(body.get("size", 512))))
+    max_combo = max(1, min(3, int(body.get("max_combo", 3))))
+
+    base = _safe_path(rel)
+    if base is None:
+        return None, "invalid path"
+    svg_path = base.with_suffix(".svg")
+    if not svg_path.exists():
+        return None, "SVG not found"
+    if not effects:
+        return None, "no effects selected"
+
+    try:
+        import numpy as np
+        from PIL import Image
+        from src.degradation import apply_effects
+        from src.svg_utils import _render_svg_to_png
+
+        png_bytes = _render_svg_to_png(svg_path)
+        img = Image.open(_io.BytesIO(png_bytes)).convert("RGB")
+        if img.width != size or img.height != size:
+            img = img.resize((size, size), Image.LANCZOS)
+        arr = np.array(img, dtype=np.uint8)
+
+        effect_names = list(effects.keys())
+        combos: list[dict] = []
+
+        for n in range(1, min(max_combo, len(effect_names)) + 1):
+            for combo in itertools.combinations(effect_names, n):
+                combo_effects = {name: effects[name] for name in combo}
+                out = apply_effects(arr.copy(), combo_effects)
+                buf = _io.BytesIO()
+                Image.fromarray(out).save(buf, format="PNG")
+                b64 = "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode("ascii")
+                combos.append({"src": b64, "label": " + ".join(combo)})
+
+        return {"combos": combos, "total": len(combos)}, ""
+    except Exception as exc:
+        return None, str(exc)
 
 
 # ── entry point ────────────────────────────────────────────────────────────────

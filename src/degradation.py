@@ -319,8 +319,9 @@ def acid_spots(img: np.ndarray, intensity: float) -> np.ndarray:
 def bleaching(img: np.ndarray, intensity: float) -> np.ndarray:
     """UV-induced brightness loss and contrast reduction."""
     out = img.astype(np.float32)
-    out = out + (255 - out) * intensity * 0.5
-    out = out * (1 - intensity * 0.3) + 128 * intensity * 0.3
+    # Lift dark areas toward white (fades lines) — capped to preserve readability
+    out = out + (255 - out) * intensity * 0.35
+    out = out * (1 - intensity * 0.2) + 160 * intensity * 0.2
     return _clip(out)
 
 
@@ -576,12 +577,14 @@ def dust(img: np.ndarray, intensity: float) -> np.ndarray:
 
 def overexpose(img: np.ndarray, intensity: float) -> np.ndarray:
     """Blown-out whites from excessive scanner illumination."""
-    return _clip(img.astype(np.float32) * (1.0 + float(intensity) * 0.8))
+    # Capped at 0.5 to avoid fully erasing lines on white background
+    return _clip(img.astype(np.float32) * (1.0 + float(intensity) * 0.5))
 
 
 def underexpose(img: np.ndarray, intensity: float) -> np.ndarray:
     """Muddy dark image from insufficient illumination."""
-    return _clip(img.astype(np.float32) * (1.0 - float(intensity) * 0.6))
+    # Reduced from 0.6 → 0.42 so lines still survive at high intensity
+    return _clip(img.astype(np.float32) * (1.0 - float(intensity) * 0.42))
 
 
 def motion_streak(img: np.ndarray, intensity: float) -> np.ndarray:
@@ -602,15 +605,157 @@ def binarization(img: np.ndarray, intensity: float) -> np.ndarray:
 
 
 def pixelation(img: np.ndarray, intensity: float) -> np.ndarray:
-    """Low-DPI scan: downsample then upsample."""
+    """Low-DPI scan: downsample then upsample.
+
+    Factor capped at 6× (was 12×) so lines remain recognizable at full intensity.
+    Minimum downsampled dimension is 1/4 of original.
+    """
     H, W   = img.shape[:2]
-    factor = max(2, int(float(intensity) * 12))
-    sw     = max(8, W // factor)
-    sh     = max(8, H // factor)
+    factor = max(2, int(float(intensity) * 6))
+    sw     = max(W // 4, W // factor)
+    sh     = max(H // 4, H // factor)
     pil    = Image.fromarray(img)
     small  = pil.resize((sw, sh), Image.NEAREST)
     big    = small.resize((W, H), Image.NEAREST)
     return np.array(big)
+
+
+# ── Aged (composite age simulation) ──────────────────────────────────────────
+
+def aged_light(img: np.ndarray, intensity: float) -> np.ndarray:
+    """Light document ageing: subtle yellowing + soft noise + mild fading.
+
+    A gentle composite that keeps text fully legible while giving a realistic
+    5–15 year old paper feel.
+    """
+    out = yellowing(img,   intensity * 0.6)
+    out = noise(out,       intensity * 0.25)
+    out = ink_fading(out,  intensity * 0.3)
+    return out
+
+
+def aged_heavy(img: np.ndarray, intensity: float) -> np.ndarray:
+    """Heavy document ageing: strong yellowing + foxing + crease + fading.
+
+    Simulates 30–60 year old paper — still readable but visibly degraded.
+    """
+    out = yellowing(img,   intensity * 0.85)
+    out = foxing(out,      intensity * 0.55)
+    out = crease(out,      intensity * 0.4)
+    out = ink_fading(out,  intensity * 0.5)
+    out = noise(out,       intensity * 0.2)
+    return out
+
+
+def aged_brittle(img: np.ndarray, intensity: float) -> np.ndarray:
+    """Extreme paper ageing: brown/sepia cast, heavy spots, torn edges.
+
+    Simulates archival/vintage documents (60+ years).  Lines may be partially
+    lost at full intensity, which is intentional for challenging training data.
+    """
+    out = yellowing(img,      intensity * 1.0)
+    out = foxing(out,         intensity * 0.8)
+    out = bio_foxing(out,     intensity * 0.5)
+    out = edge_wear(out,      intensity * 0.7)
+    out = water_stain(out,    intensity * 0.4)
+    out = ink_fading(out,     intensity * 0.65)
+    return out
+
+
+# ── Physical extras ───────────────────────────────────────────────────────────
+
+def wrinkle(img: np.ndarray, intensity: float) -> np.ndarray:
+    """Smooth low-frequency brightness variation from paper deformation."""
+    rng = _rng()
+    H, W = img.shape[:2]
+    # Generate coarse noise, upscale to full size for smooth wrinkle map
+    scale      = max(4, min(H, W) // 16)
+    small_h    = max(2, H // scale)
+    small_w    = max(2, W // scale)
+    noise_map  = rng.random((small_h, small_w)).astype(np.float32)
+    pil_noise  = Image.fromarray((noise_map * 255).astype(np.uint8))
+    wrinkle_map = (
+        np.array(pil_noise.resize((W, H), Image.BILINEAR)).astype(np.float32) / 255.0
+    )
+    # Convert to multiplicative brightness factor centred at 1.0
+    mult = 1.0 + (wrinkle_map - 0.5) * intensity * 0.28
+    return _clip(img.astype(np.float32) * mult[..., None])
+
+
+def pencil_marks(img: np.ndarray, intensity: float) -> np.ndarray:
+    """Light pencil / handwriting annotation strokes."""
+    rng  = _rng()
+    H, W = img.shape[:2]
+    mask = np.zeros((H, W), dtype=np.float32)
+    n    = max(1, int(intensity * 7))
+
+    for _ in range(n):
+        x0        = int(rng.integers(0, W))
+        y0        = int(rng.integers(0, H))
+        length    = int(rng.integers(W // 8, W // 3))
+        angle_rad = float(rng.uniform(-0.5, 0.5))
+        steps     = max(length, 1)
+        alpha     = float(rng.uniform(0.05, 0.20)) * intensity
+
+        xs = np.clip(
+            (x0 + np.arange(steps) * np.cos(angle_rad)).astype(int), 0, W - 1
+        )
+        ys = np.clip(
+            (y0 + np.arange(steps) * np.sin(angle_rad)).astype(int), 0, H - 1
+        )
+        mask[ys, xs]                            = np.maximum(mask[ys, xs], alpha)
+        mask[np.clip(ys + 1, 0, H - 1), xs]    = np.maximum(
+            mask[np.clip(ys + 1, 0, H - 1), xs], alpha * 0.4
+        )
+
+    gray_val = float(rng.uniform(40, 110))
+    out = img.astype(np.float32)
+    out = out * (1 - mask[..., None]) + gray_val * mask[..., None]
+    return _clip(out)
+
+
+# ── Reproduction ──────────────────────────────────────────────────────────────
+
+def photocopy(img: np.ndarray, intensity: float) -> np.ndarray:
+    """Photocopy effect: contrast boost, coarse grain, edge accentuation."""
+    rng = _rng()
+    out = img.astype(np.float32)
+
+    # Contrast boost around mid-grey
+    mid = 128.0
+    out = (out - mid) * (1.0 + intensity * 0.7) + mid
+
+    # Coarse grain
+    grain = rng.normal(0, intensity * 18.0, img.shape).astype(np.float32)
+    out   = out + grain
+
+    # Slight unsharp-mask to accentuate edges
+    tmp      = _clip(out)
+    blurred  = np.array(
+        Image.fromarray(tmp).filter(ImageFilter.GaussianBlur(radius=1.5))
+    ).astype(np.float32)
+    out = _clip(tmp.astype(np.float32) + (tmp.astype(np.float32) - blurred) * intensity * 0.5)
+    return out
+
+
+def fax_lines(img: np.ndarray, intensity: float) -> np.ndarray:
+    """Horizontal banding and scan-line dropouts from fax transmission."""
+    rng     = _rng()
+    H, W    = img.shape[:2]
+    out     = img.astype(np.float32)
+    spacing = max(3, int(16 - intensity * 10))
+
+    for y in range(0, H, spacing):
+        # Random brightness variation per band
+        band_h     = max(1, spacing // 3)
+        brightness = float(rng.uniform(0.82, 1.0))
+        out[y : min(H, y + band_h), :] *= brightness
+        # Occasional dark dropout line
+        if rng.random() < intensity * 0.35:
+            dropout = float(rng.uniform(0.25, 0.65)) * intensity
+            out[y, :] *= (1.0 - dropout)
+
+    return _clip(out)
 
 
 # ── Registry + apply_effects ──────────────────────────────────────────────────
@@ -627,6 +772,8 @@ EFFECTS: dict[str, callable] = {
     "bleed_through":     bleed_through,
     "hole_punch":        hole_punch,
     "tape_residue":      tape_residue,
+    "wrinkle":           wrinkle,
+    "pencil_marks":      pencil_marks,
     # Chemical
     "ink_fading":        ink_fading,
     "ink_bleed":         ink_bleed,
@@ -640,6 +787,10 @@ EFFECTS: dict[str, callable] = {
     "mildew":            mildew,
     "bio_foxing":        bio_foxing,
     "insect_damage":     insect_damage,
+    # Aged (composite presets)
+    "aged_light":        aged_light,
+    "aged_heavy":        aged_heavy,
+    "aged_brittle":      aged_brittle,
     # Scanning
     "noise":             noise,
     "salt_pepper":       salt_pepper,
@@ -657,19 +808,31 @@ EFFECTS: dict[str, callable] = {
     "motion_streak":     motion_streak,
     "binarization":      binarization,
     "pixelation":        pixelation,
+    # Reproduction
+    "photocopy":         photocopy,
+    "fax_lines":         fax_lines,
 }
 
-# Canonical application order: physical → biological → chemical → scanning
+# Canonical application order: physical → biological → chemical → aged → scanning → reproduction
 _APPLY_ORDER: list[str] = [
+    # Physical
     "yellowing", "foxing", "crease", "water_stain", "edge_wear",
     "fingerprint", "binding_shadow", "bleed_through", "hole_punch", "tape_residue",
+    "wrinkle", "pencil_marks",
+    # Biological
     "mold", "mildew", "bio_foxing", "insect_damage",
+    # Chemical
     "ink_fading", "ink_bleed", "coffee_stain", "oil_stain", "acid_spots",
     "bleaching", "toner_flaking",
+    # Aged composite presets (applied after physical/chemical, before scanning artefacts)
+    "aged_light", "aged_heavy", "aged_brittle",
+    # Scanning
     "noise", "salt_pepper", "vignette", "jpeg_artifacts", "skew",
     "barrel_distortion", "moire", "halftone", "color_cast", "blur",
     "dust", "overexpose", "underexpose", "motion_streak", "binarization",
     "pixelation",
+    # Reproduction
+    "photocopy", "fax_lines",
 ]
 
 

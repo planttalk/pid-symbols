@@ -13,6 +13,7 @@ import SaveIcon             from '@mui/icons-material/Save';
 import ChevronLeftIcon      from '@mui/icons-material/ChevronLeft';
 import ChevronRightIcon     from '@mui/icons-material/ChevronRight';
 import CloseIcon            from '@mui/icons-material/Close';
+import GridViewIcon         from '@mui/icons-material/GridView';
 import { useEditorStore } from '../store';
 import { EFFECT_GROUPS, ALL_EFFECT_NAMES } from '../constants';
 
@@ -130,9 +131,10 @@ function Lightbox({ images, idx, onClose, onGoto }) {
             size="small"
             sx={{
               position: 'absolute', top: 8, right: 8,
-              color: 'white',
-              bgcolor: 'rgba(255,255,255,0.08)',
-              '&:hover': { bgcolor: 'rgba(255,255,255,0.18)' },
+              color: '#fff',
+              bgcolor: 'rgba(0,0,0,0.65)',
+              border: '1px solid rgba(255,255,255,0.25)',
+              '&:hover': { bgcolor: 'rgba(0,0,0,0.85)' },
             }}
           >
             <CloseIcon sx={{ fontSize: 18 }} />
@@ -162,16 +164,17 @@ function Lightbox({ images, idx, onClose, onGoto }) {
               disabled={idx === 0}
               onClick={() => onGoto(idx - 1)}
               sx={{
-                color: 'white',
-                bgcolor: 'rgba(255,255,255,0.08)',
-                '&:hover': { bgcolor: 'rgba(255,255,255,0.18)' },
-                '&.Mui-disabled': { color: 'rgba(255,255,255,0.2)' },
+                color: '#fff',
+                bgcolor: 'rgba(0,0,0,0.65)',
+                border: '1px solid rgba(255,255,255,0.25)',
+                '&:hover': { bgcolor: 'rgba(0,0,0,0.85)' },
+                '&.Mui-disabled': { bgcolor: 'rgba(0,0,0,0.2)', color: 'rgba(255,255,255,0.2)', border: '1px solid rgba(255,255,255,0.08)' },
               }}
             >
               <ChevronLeftIcon />
             </IconButton>
 
-            <Typography sx={{ color: 'rgba(255,255,255,0.7)', fontSize: 12, fontFamily: '"JetBrains Mono", "Cascadia Code", Consolas, monospace' }}>
+            <Typography sx={{ color: '#fff', fontSize: 12, fontFamily: '"JetBrains Mono", "Cascadia Code", Consolas, monospace', textShadow: '0 1px 4px rgba(0,0,0,0.8)' }}>
               {img.label} &nbsp;·&nbsp; {idx + 1} / {images.length}
             </Typography>
 
@@ -180,10 +183,11 @@ function Lightbox({ images, idx, onClose, onGoto }) {
               disabled={idx === images.length - 1}
               onClick={() => onGoto(idx + 1)}
               sx={{
-                color: 'white',
-                bgcolor: 'rgba(255,255,255,0.08)',
-                '&:hover': { bgcolor: 'rgba(255,255,255,0.18)' },
-                '&.Mui-disabled': { color: 'rgba(255,255,255,0.2)' },
+                color: '#fff',
+                bgcolor: 'rgba(0,0,0,0.65)',
+                border: '1px solid rgba(255,255,255,0.25)',
+                '&:hover': { bgcolor: 'rgba(0,0,0,0.85)' },
+                '&.Mui-disabled': { bgcolor: 'rgba(0,0,0,0.2)', color: 'rgba(255,255,255,0.2)', border: '1px solid rgba(255,255,255,0.08)' },
               }}
             >
               <ChevronRightIcon />
@@ -303,10 +307,14 @@ export default function AugmentTab() {
   const [outDir,     setOutDir]     = useState(augOutputDir);
   const [randPer,    setRandPer]    = useState(augRandomizePerImg);
   const [previewing, setPreviewing] = useState(false);
-  const [saving,     setSaving]     = useState(false);
-  const [images,     setImages]     = useState([]);
-  const [imagesLabel, setImagesLabel] = useState('');
-  const [msg,        setMsg]        = useState(null);
+  const [saving,       setSaving]       = useState(false);
+  const [images,       setImages]       = useState([]);
+  const [imagesLabel,  setImagesLabel]  = useState('');
+  const [msg,          setMsg]          = useState(null);
+  const [comboing,     setComboing]     = useState(false);
+  const [comboImages,  setComboImages]  = useState([]);
+  const [comboMsg,     setComboMsg]     = useState(null);
+  const [maxCombo,     setMaxCombo]     = useState(3);
 
   // ── Batch state ──────────────────────────────────────────────────────────────
   const [batchSource,   setBatchSource]   = useState('');
@@ -330,7 +338,7 @@ export default function AugmentTab() {
     return true;
   }).length, [allSymbols, batchSource, batchStandard]);
 
-  const busy = previewing || saving || batchRunning;
+  const busy = previewing || saving || batchRunning || comboing;
 
   const handleToggle = useCallback((name, enabled) => {
     if (enabled) setAugEffect(name, 0.5);
@@ -347,6 +355,29 @@ export default function AugmentTab() {
     ALL_EFFECT_NAMES.forEach(name => removeAugEffect(name));
     picked.forEach(name => setAugEffect(name, +(Math.random() * 0.7 + 0.2).toFixed(2)));
   }, [setAugEffect, removeAugEffect]);
+
+  const handleCombo = useCallback(async () => {
+    if (!currentPath) return;
+    setComboing(true);
+    setComboMsg(null);
+    setComboImages([]);
+    try {
+      const { augEffects: effects } = useEditorStore.getState();
+      const res = await fetch('/api/augment-combo', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: currentPath, effects, size, max_combo: maxCombo }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      const data = await res.json();
+      const imgs = (data.combos || []).map(c => ({ src: c.src, label: c.label }));
+      setComboImages(imgs);
+      if (!imgs.length) setComboMsg({ err: 'No effects selected — enable at least one.' });
+    } catch (e) {
+      setComboMsg({ err: '✗ Combo: ' + e.message });
+    } finally {
+      setComboing(false);
+    }
+  }, [currentPath, size, maxCombo]);
 
   const handlePreview = useCallback(async () => {
     if (!currentPath) return;
@@ -464,18 +495,13 @@ export default function AugmentTab() {
       <Box sx={{ flex: 1, overflowY: 'auto', px: 1.25, py: 0.75 }}>
 
         {/* Top actions */}
-        <Stack direction="row" gap={0.75} sx={{ mb: 1 }}>
+        <Stack direction="row" gap={0.75} sx={{ mb: 0.75 }}>
           <Button
             fullWidth
             startIcon={previewing ? <CircularProgress size={12} /> : <VisibilityIcon sx={{ fontSize: 14 }} />}
             onClick={handlePreview}
             disabled={!currentPath || busy}
-            sx={{
-              fontSize: 11,
-              borderColor: '#4ec9b0',
-              color: '#4ec9b0',
-              borderRadius: '6px',
-            }}
+            sx={{ fontSize: 11, borderColor: '#4ec9b0', color: '#4ec9b0', borderRadius: '6px' }}
           >
             {previewing ? 'Previewing…' : `Preview ${count}`}
           </Button>
@@ -484,15 +510,42 @@ export default function AugmentTab() {
             startIcon={<ShuffleIcon sx={{ fontSize: 14 }} />}
             onClick={handleRandomize}
             disabled={busy}
-            sx={{
-              fontSize: 11,
-              borderColor: '#cc88ff',
-              color: '#cc88ff',
-              borderRadius: '6px',
-            }}
+            sx={{ fontSize: 11, borderColor: '#cc88ff', color: '#cc88ff', borderRadius: '6px' }}
           >
             Randomize
           </Button>
+        </Stack>
+
+        {/* Combo preview row */}
+        <Stack direction="row" gap={0.75} alignItems="center" sx={{ mb: 1 }}>
+          <Button
+            fullWidth
+            startIcon={comboing ? <CircularProgress size={12} /> : <GridViewIcon sx={{ fontSize: 14 }} />}
+            onClick={handleCombo}
+            disabled={!currentPath || busy}
+            sx={{ fontSize: 11, borderColor: '#818cf8', color: '#818cf8', borderRadius: '6px' }}
+          >
+            {comboing ? 'Generating…' : 'Combo Preview'}
+          </Button>
+          <Stack direction="row" alignItems="center" gap={0.5} sx={{ flexShrink: 0 }}>
+            <Typography sx={{ fontSize: 10, color: 'text.disabled', whiteSpace: 'nowrap' }}>max</Typography>
+            {[1, 2, 3].map(n => (
+              <Button
+                key={n}
+                size="small"
+                variant={maxCombo === n ? 'contained' : 'outlined'}
+                onClick={() => setMaxCombo(n)}
+                sx={{
+                  minWidth: 24, p: '2px 6px', fontSize: 10, borderRadius: '6px',
+                  bgcolor: maxCombo === n ? 'rgba(129,140,248,0.3)' : 'transparent',
+                  borderColor: maxCombo === n ? '#818cf8' : 'rgba(255,255,255,0.15)',
+                  color: maxCombo === n ? '#818cf8' : 'text.secondary',
+                }}
+              >
+                {n}
+              </Button>
+            ))}
+          </Stack>
         </Stack>
 
         <Stack direction="row" alignItems="center" gap={1} sx={{ mb: 1 }}>
@@ -670,13 +723,27 @@ export default function AugmentTab() {
           </AccordionDetails>
         </Accordion>
 
-        {/* Per-symbol results */}
+        {/* Per-symbol preview results */}
         {(previewing || saving) ? (
           <Box sx={{ display: 'flex', justifyContent: 'center', mt: 2 }}>
             <CircularProgress size={24} />
           </Box>
         ) : (
           <SmartGrid images={images} label={imagesLabel} />
+        )}
+
+        {/* Combo results */}
+        {comboMsg && (
+          <Alert severity={comboMsg.ok ? 'success' : 'error'} sx={{ py: 0, fontSize: 11, mt: 0.5 }}>
+            {comboMsg.ok || comboMsg.err}
+          </Alert>
+        )}
+        {comboing ? (
+          <Box sx={{ display: 'flex', justifyContent: 'center', mt: 2 }}>
+            <CircularProgress size={24} />
+          </Box>
+        ) : (
+          <SmartGrid images={comboImages} label={`Combinations (1–${maxCombo} effects)`} />
         )}
 
       </Box>
