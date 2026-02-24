@@ -32,6 +32,63 @@ def _rng() -> np.random.Generator:
     return np.random.default_rng()
 
 
+def _fbm_1d(
+    n: int,
+    octaves: int = 5,
+    roughness: float = 0.65,
+    rng: 'np.random.Generator | None' = None,
+) -> np.ndarray:
+    """1D fractal Brownian motion via numpy linear interpolation.
+
+    No external packages required.  For even smoother organic profiles the
+    ``noise`` package (``pip install noise``) provides Perlin / simplex noise,
+    but this numpy-only implementation is sufficient for realistic paper tears.
+
+    Returns an array of length *n* normalised to [-1, 1].
+    """
+    if rng is None:
+        rng = np.random.default_rng()
+    result = np.zeros(n, dtype=np.float32)
+    amp, freq = 1.0, 1
+    for _ in range(octaves):
+        period = max(2, n // freq)
+        n_pts  = n // period + 2
+        pts    = rng.uniform(-1.0, 1.0, n_pts).astype(np.float32)
+        x      = np.linspace(0, n_pts - 1, n)
+        result += np.interp(x, np.arange(n_pts), pts) * amp
+        amp  *= roughness
+        freq *= 2
+    mx = np.abs(result).max()
+    return result / mx if mx > 0 else result
+
+
+def _paper_texture(H: int, W: int, rng: 'np.random.Generator | None' = None) -> np.ndarray:
+    """Procedural paper texture: warm off-white base + fine grain + fiber streaks.
+
+    Used as the background revealed by tears (no PNG assets required).
+    The result is an (H, W, 3) uint8 array in the range [200, 255].
+    """
+    if rng is None:
+        rng = np.random.default_rng()
+    # Warm off-white base
+    base = np.full((H, W, 3), [248, 243, 232], dtype=np.float32)
+    # Fine grain (paper surface noise)
+    grain = rng.normal(0.0, 4.0, (H, W)).astype(np.float32)
+    base += grain[..., np.newaxis]
+    # Coarse horizontal fiber streaks (low-res noise upscaled)
+    sh = max(4, H // 10)
+    sw = max(4, W // 5)
+    fiber_small = rng.uniform(-1.0, 1.0, (sh, sw)).astype(np.float32)
+    fiber_up = (
+        np.array(
+            Image.fromarray(((fiber_small + 1) * 127.5).astype(np.uint8))
+            .resize((W, H), Image.BILINEAR)
+        ).astype(np.float32) / 127.5 - 1.0
+    )
+    base += fiber_up[..., np.newaxis] * 5.0
+    return np.clip(base, 200, 255).astype(np.uint8)
+
+
 # ── Physical ──────────────────────────────────────────────────────────────────
 
 def yellowing(img: np.ndarray, intensity: float) -> np.ndarray:
@@ -814,12 +871,17 @@ def pencil_marks(img: np.ndarray, intensity: float) -> np.ndarray:
 # ── Physical – Structural damage ─────────────────────────────────────────────
 
 def tear(img: np.ndarray, intensity: float) -> np.ndarray:
-    """Paper tear along one edge: jagged missing chunk + fibre brightening.
+    """Paper tear along one edge with realistic paper texture background.
 
-    Simulates physical damage where an edge or corner has been torn away.
-    The torn region becomes white (paper gone); the boundary gets slight
-    fibre brightening.  Tear depth scales with intensity (up to ~22 % of the
-    image dimension at full strength).
+    Improvements over a plain geometric mask:
+    • FBM (fractal Brownian motion) edge profile — organic, non-repeating shape
+    • Procedural paper-grain texture revealed in the torn-away region
+    • Soft drop-shadow cast onto the remaining paper near the tear boundary
+    • Fibrous fringe noise at the tear edge (exposed paper fibres)
+
+    Tear depth scales with intensity (up to ~22 % of the image dimension).
+    No extra Python packages required; for smoother profiles install ``noise``
+    (``pip install noise``) and replace ``_fbm_1d`` with simplex noise.
     """
     rng  = _rng()
     H, W = img.shape[:2]
@@ -828,62 +890,82 @@ def tear(img: np.ndarray, intensity: float) -> np.ndarray:
 
     edge = int(rng.integers(0, 4))  # 0=top  1=bottom  2=left  3=right
 
-    if edge in (0, 1):  # profile varies by column
-        n         = W
-        max_depth = max(3, int(H * 0.22 * t))
-    else:               # profile varies by row
-        n         = H
-        max_depth = max(3, int(W * 0.22 * t))
+    if edge in (0, 1):
+        n, max_depth = W, max(3, int(H * 0.22 * t))
+    else:
+        n, max_depth = H, max(3, int(W * 0.22 * t))
 
     if max_depth < 2:
         return img
 
-    # Random-walk depth profile, then smooth via PIL
-    steps   = rng.standard_normal(n).astype(np.float32) * max_depth * 0.12
-    profile = np.cumsum(steps)
-    profile -= profile.min()
-    profile  = profile / max(profile.max(), 1e-6) * max_depth
-
-    profile_img = Image.fromarray(
-        np.clip(profile / max_depth * 255, 0, 255).astype(np.uint8)[np.newaxis, :]
-    )
-    profile = (
-        np.array(profile_img.filter(ImageFilter.GaussianBlur(max(1, n // 20))))
-        .flatten().astype(np.float32) / 255.0 * max_depth
-    )
-    depths = profile.astype(int)
+    # ── Organic tear profile via FBM ─────────────────────────────────────────
+    raw    = _fbm_1d(n, octaves=5, roughness=0.62, rng=rng)
+    raw    = (raw - raw.min()) / max(raw.max() - raw.min(), 1e-6)
+    depths = (raw * max_depth).astype(int)
 
     row_idx = np.arange(H)[:, np.newaxis]  # (H, 1)
     col_idx = np.arange(W)[np.newaxis, :]  # (1, W)
 
-    if edge == 0:   # top
-        d_map  = depths[np.newaxis, :]
-        torn   = row_idx < d_map
-        fringe = (row_idx >= d_map) & (row_idx < d_map + 2)
-    elif edge == 1: # bottom
-        d_map  = depths[np.newaxis, :]
-        torn   = row_idx >= (H - d_map)
-        fringe = (row_idx < (H - d_map)) & (row_idx >= (H - d_map - 2))
-    elif edge == 2: # left
-        d_map  = depths[:, np.newaxis]
-        torn   = col_idx < d_map
-        fringe = (col_idx >= d_map) & (col_idx < d_map + 2)
-    else:           # right
-        d_map  = depths[:, np.newaxis]
-        torn   = col_idx >= (W - d_map)
-        fringe = (col_idx < (W - d_map)) & (col_idx >= (W - d_map - 2))
+    if edge == 0:
+        d_map = depths[np.newaxis, :]
+        torn  = row_idx < d_map
+    elif edge == 1:
+        d_map = depths[np.newaxis, :]
+        torn  = row_idx >= (H - d_map)
+    elif edge == 2:
+        d_map = depths[:, np.newaxis]
+        torn  = col_idx < d_map
+    else:
+        d_map = depths[:, np.newaxis]
+        torn  = col_idx >= (W - d_map)
 
-    out[torn]   = 255.0
-    out[fringe] = np.clip(out[fringe] * 1.30, 0, 255)
+    # ── Paper texture in the exposed region ───────────────────────────────────
+    paper = _paper_texture(H, W, rng).astype(np.float32)
+    out   = np.where(torn[..., np.newaxis], paper, out)
+
+    # ── Drop-shadow on remaining paper near the tear boundary ─────────────────
+    torn_pil  = Image.fromarray((torn.astype(np.uint8) * 255))
+    shadow_r  = max(2.0, max_depth * 0.18)
+    shadow_map = (
+        np.array(torn_pil.filter(ImageFilter.GaussianBlur(radius=shadow_r)))
+        .astype(np.float32) / 255.0
+    )
+    # Restrict shadow to non-torn area only
+    shadow_map *= 1.0 - torn.astype(np.float32)
+    out = out * (1.0 - shadow_map[..., np.newaxis] * 0.40 * t)
+
+    # ── Fibrous fringe noise at the tear boundary ─────────────────────────────
+    fringe_px = max(2, max_depth // 7)
+    if edge == 0:
+        fringe = (row_idx >= d_map) & (row_idx < d_map + fringe_px)
+    elif edge == 1:
+        fringe = (row_idx < (H - d_map)) & (row_idx >= (H - d_map - fringe_px))
+    elif edge == 2:
+        fringe = (col_idx >= d_map) & (col_idx < d_map + fringe_px)
+    else:
+        fringe = (col_idx < (W - d_map)) & (col_idx >= (W - d_map - fringe_px))
+
+    fiber_noise = rng.normal(0, 12.0, (H, W)).astype(np.float32)
+    out = np.where(
+        fringe[..., np.newaxis],
+        np.clip(out + fiber_noise[..., np.newaxis] * 0.6 + 10.0, 0, 255),
+        out,
+    )
+
     return _clip(out)
 
 
 def paper_fold(img: np.ndarray, intensity: float) -> np.ndarray:
-    """Fold crease across the paper: shadow valley + highlight at the crease.
+    """Fold crease with shadow, highlight, and FBM surface-compression texture.
 
-    Simulates folding a sheet in half — the crease leaves a dark shadow on the
-    compressed side and a thin bright highlight right at the fold line, giving
-    a 3-D relief appearance.
+    Improvements over the plain Gaussian profile:
+    • Asymmetric shadow (stronger on the compressed side of the fold)
+    • Thin bright highlight line at the crease
+    • FBM-based surface texture variation concentrated near the crease,
+      simulating micro-fibre compression visible on real folded paper
+
+    No extra Python packages required; for smoother texture install ``noise``
+    (``pip install noise``) and replace ``_fbm_1d`` with simplex noise.
     """
     rng  = _rng()
     H, W = img.shape[:2]
@@ -892,24 +974,31 @@ def paper_fold(img: np.ndarray, intensity: float) -> np.ndarray:
     horizontal = bool(rng.integers(0, 2))
 
     if horizontal:
+        dim      = H
         pos      = int(rng.uniform(0.2, 0.8) * H)
-        dist     = (np.arange(H) - pos).astype(np.float32)  # (H,)
+        dist     = (np.arange(H) - pos).astype(np.float32)
         shadow_w = max(H * 0.06, 5.0)
     else:
+        dim      = W
         pos      = int(rng.uniform(0.2, 0.8) * W)
-        dist     = (np.arange(W) - pos).astype(np.float32)  # (W,)
+        dist     = (np.arange(W) - pos).astype(np.float32)
         shadow_w = max(W * 0.06, 5.0)
 
-    # Shadow: Gaussian centred slightly before the fold
+    # Shadow: asymmetric Gaussian centred slightly before the fold
     shadow    = np.exp(-((dist - shadow_w * 0.4) ** 2) / (2 * (shadow_w * 0.5) ** 2))
     shadow    = shadow * 0.30 * t
 
-    # Highlight: narrow Gaussian right at the crease line
+    # Highlight: narrow line right at the crease
     hi_w      = shadow_w * 0.25
     highlight = np.exp(-(dist ** 2) / (2 * hi_w ** 2))
     highlight = highlight * 0.20 * t
 
-    factor = np.clip(1.0 - shadow + highlight, 0.65, 1.20).astype(np.float32)
+    # FBM surface texture tapered to the crease vicinity
+    fbm       = np.abs(_fbm_1d(dim, octaves=4, roughness=0.60, rng=rng)) * 0.04 * t
+    near_fold = np.exp(-(dist ** 2) / (2 * (shadow_w * 0.8) ** 2))
+    fold_var  = fbm * near_fold
+
+    factor = np.clip(1.0 - shadow + highlight + fold_var, 0.65, 1.20).astype(np.float32)
 
     if horizontal:
         out = img.astype(np.float32) * factor[:, np.newaxis, np.newaxis]
