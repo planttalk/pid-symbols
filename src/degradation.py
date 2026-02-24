@@ -1069,16 +1069,20 @@ def tear(img: np.ndarray, intensity: float) -> np.ndarray:
 
 
 def paper_fold(img: np.ndarray, intensity: float) -> np.ndarray:
-    """Fold crease with shadow, highlight, and FBM surface-compression texture.
+    """Realistic fold crease: curved line, asymmetric shadow, grazing line, lift.
 
-    Improvements over the plain Gaussian profile:
-    • Asymmetric shadow (stronger on the compressed side of the fold)
-    • Thin bright highlight line at the crease
-    • FBM-based surface texture variation concentrated near the crease,
-      simulating micro-fibre compression visible on real folded paper
-
-    No extra Python packages required; for smoother texture install ``noise``
-    (``pip install noise``) and replace ``_fbm_1d`` with simplex noise.
+    Improvements over a symmetrical Gaussian profile:
+    • Curved fold line — FBM deviates the crease position per column/row so
+      the fold looks hand-made, not ruler-straight
+    • Asymmetric shadow — wide soft darkening *only* on the concave side
+      (negative-dist); the convex side stays bright
+    • Grazing shadow — extra narrow dark band just before the crease (the
+      deepest shadow at the fold valley, where light cannot reach)
+    • Highlight — thin bright line at the crease (compressed fibres reflect
+      light back toward the viewer)
+    • Lift — slight brightness increase on the convex (positive-dist) side
+      as the paper curves toward the viewer
+    • FBM texture concentrated at the crease zone (fibre compression variation)
     """
     rng  = _rng()
     H, W = img.shape[:2]
@@ -1087,38 +1091,53 @@ def paper_fold(img: np.ndarray, intensity: float) -> np.ndarray:
     horizontal = bool(rng.integers(0, 2))
 
     if horizontal:
-        dim      = H
-        pos      = int(rng.uniform(0.2, 0.8) * H)
-        dist     = (np.arange(H) - pos).astype(np.float32)
-        shadow_w = max(H * 0.06, 5.0)
+        shadow_w  = max(H * 0.06, 5.0)
+        base_pos  = int(rng.uniform(0.2, 0.8) * H)
+        # Slight curvature: fold-line position varies per column via FBM
+        dev       = _fbm_1d(W, octaves=4, roughness=0.60, rng=rng) * H * 0.025 * t
+        fold_pos  = base_pos + dev                              # (W,)
+        row_idx   = np.arange(H, dtype=np.float32)[:, np.newaxis]
+        dist      = row_idx - fold_pos[np.newaxis, :]           # (H, W) signed
+        fbm_tex   = np.abs(_fbm_1d(W, octaves=4, roughness=0.60, rng=rng)) * 0.04 * t
+        fbm_2d    = fbm_tex[np.newaxis, :]                      # (1, W)
     else:
-        dim      = W
-        pos      = int(rng.uniform(0.2, 0.8) * W)
-        dist     = (np.arange(W) - pos).astype(np.float32)
-        shadow_w = max(W * 0.06, 5.0)
+        shadow_w  = max(W * 0.06, 5.0)
+        base_pos  = int(rng.uniform(0.2, 0.8) * W)
+        dev       = _fbm_1d(H, octaves=4, roughness=0.60, rng=rng) * W * 0.025 * t
+        fold_pos  = base_pos + dev                              # (H,)
+        col_idx   = np.arange(W, dtype=np.float32)[np.newaxis, :]
+        dist      = col_idx - fold_pos[:, np.newaxis]           # (H, W) signed
+        fbm_tex   = np.abs(_fbm_1d(H, octaves=4, roughness=0.60, rng=rng)) * 0.04 * t
+        fbm_2d    = fbm_tex[:, np.newaxis]                      # (H, 1)
 
-    # Shadow: asymmetric Gaussian centred slightly before the fold
-    shadow    = np.exp(-((dist - shadow_w * 0.4) ** 2) / (2 * (shadow_w * 0.5) ** 2))
-    shadow    = shadow * 0.30 * t
+    # ── Profile components (all (H, W) arrays) ────────────────────────────────
 
-    # Highlight: narrow line right at the crease
-    hi_w      = shadow_w * 0.25
-    highlight = np.exp(-(dist ** 2) / (2 * hi_w ** 2))
-    highlight = highlight * 0.20 * t
+    # Wide shadow: concave side only (dist < 0)
+    shadow   = np.exp(-(np.maximum(-dist, 0) ** 2) / (2 * (shadow_w * 0.70) ** 2))
+    shadow  *= 0.36 * t
 
-    # FBM surface texture tapered to the crease vicinity
-    fbm       = np.abs(_fbm_1d(dim, octaves=4, roughness=0.60, rng=rng)) * 0.04 * t
-    near_fold = np.exp(-(dist ** 2) / (2 * (shadow_w * 0.8) ** 2))
-    fold_var  = fbm * near_fold
+    # Grazing shadow: narrow dark band just before the crease
+    grazing  = np.exp(-((dist + shadow_w * 0.12) ** 2) / (2 * (shadow_w * 0.08) ** 2))
+    grazing *= 0.22 * t
 
-    factor = np.clip(1.0 - shadow + highlight + fold_var, 0.65, 1.20).astype(np.float32)
+    # Highlight: bright narrow line at the crease
+    highlight  = np.exp(-(dist ** 2) / (2 * (shadow_w * 0.20) ** 2))
+    highlight *= 0.24 * t
 
-    if horizontal:
-        out = img.astype(np.float32) * factor[:, np.newaxis, np.newaxis]
-    else:
-        out = img.astype(np.float32) * factor[np.newaxis, :, np.newaxis]
+    # Lift: convex side brightens slightly
+    lift   = np.exp(-(np.maximum(dist, 0) ** 2) / (2 * (shadow_w * 0.55) ** 2))
+    lift  *= 0.09 * t
 
-    return _clip(out)
+    # FBM surface texture concentrated near the crease
+    near_fold = np.exp(-(dist ** 2) / (2 * (shadow_w * 0.85) ** 2))
+    fold_var  = fbm_2d * near_fold
+
+    factor = np.clip(
+        1.0 - shadow - grazing + highlight + lift + fold_var,
+        0.58, 1.24,
+    ).astype(np.float32)
+
+    return _clip(img.astype(np.float32) * factor[..., np.newaxis])
 
 
 # ── Reproduction ──────────────────────────────────────────────────────────────

@@ -5,6 +5,7 @@ import {
   Alert, CircularProgress, Switch, ImageList, ImageListItem,
   ImageListItemBar, Divider, IconButton, Modal,
   Select, MenuItem, FormControl, LinearProgress,
+  Dialog, DialogTitle, DialogContent, DialogActions,
 } from '@mui/material';
 import ExpandMoreIcon       from '@mui/icons-material/ExpandMore';
 import ShuffleIcon          from '@mui/icons-material/Shuffle';
@@ -14,6 +15,8 @@ import ChevronLeftIcon      from '@mui/icons-material/ChevronLeft';
 import ChevronRightIcon     from '@mui/icons-material/ChevronRight';
 import CloseIcon            from '@mui/icons-material/Close';
 import GridViewIcon         from '@mui/icons-material/GridView';
+import PhotoLibraryIcon     from '@mui/icons-material/PhotoLibrary';
+import AccountTreeIcon      from '@mui/icons-material/AccountTree';
 import { useEditorStore } from '../store';
 import { EFFECT_GROUPS, ALL_EFFECT_NAMES } from '../constants';
 
@@ -312,12 +315,13 @@ export default function AugmentTab() {
   const [maxCombo,     setMaxCombo]     = useState(3);
 
   // ── Batch state ──────────────────────────────────────────────────────────────
-  const [batchSource,   setBatchSource]   = useState('');
-  const [batchStandard, setBatchStandard] = useState('');
-  const [batchOutDir,   setBatchOutDir]   = useState('');
-  const [batchRunning,  setBatchRunning]  = useState(false);
-  const [batchProgress, setBatchProgress] = useState(null); // {current,total,name,saved}
-  const [batchResult,   setBatchResult]   = useState(null); // {processed,saved,skipped,errors,...}
+  const [batchSource,      setBatchSource]      = useState('');
+  const [batchStandard,    setBatchStandard]    = useState('');
+  const [batchOutDir,      setBatchOutDir]      = useState('');
+  const [batchRunning,     setBatchRunning]     = useState(false);
+  const [batchProgress,    setBatchProgress]    = useState(null); // {current,total,name,saved}
+  const [batchResult,      setBatchResult]      = useState(null); // {processed,saved,skipped,errors,...}
+  const [exportModalOpen,  setExportModalOpen]  = useState(false);
 
   const batchSources   = useMemo(() => [...new Set(allSymbols.map(s => s.source).filter(Boolean))].sort(), [allSymbols]);
   const batchStandards = useMemo(() => [...new Set(allSymbols.map(s => s.standard).filter(Boolean))].sort(), [allSymbols]);
@@ -403,7 +407,8 @@ export default function AugmentTab() {
     }
   }, [currentPath, size, count, randPer]);
 
-  const handleBatch = useCallback(async () => {
+  const handleBatch = useCallback(async (fmt = 'png') => {
+    setExportModalOpen(false);
     setBatchRunning(true);
     setBatchProgress(null);
     setBatchResult(null);
@@ -419,6 +424,7 @@ export default function AugmentTab() {
           count,
           output_dir:          batchOutDir || batchDefaultDir,
           randomize_per_image: randPer,
+          format:              fmt,
         }),
       });
       if (!res.ok) throw new Error(await res.text());
@@ -669,7 +675,7 @@ export default function AugmentTab() {
               fullWidth variant="outlined"
               startIcon={batchRunning ? <CircularProgress size={12} /> : <SaveIcon sx={{ fontSize: 14 }} />}
               disabled={batchMatchCount === 0 || batchRunning || previewing || saving}
-              onClick={handleBatch}
+              onClick={() => setExportModalOpen(true)}
               sx={{
                 fontSize: 11,
                 borderColor: '#ff9800',
@@ -706,9 +712,12 @@ export default function AugmentTab() {
             {/* Result summary */}
             {batchResult && !batchRunning && (
               batchResult.error
-                ? <Alert severity="error"   sx={{ py: 0, fontSize: 11 }}>{batchResult.error}</Alert>
+                ? <Alert severity="error" sx={{ py: 0, fontSize: 11 }}>{batchResult.error}</Alert>
                 : <Alert severity={batchResult.errors > 0 ? 'warning' : 'success'} sx={{ py: 0, fontSize: 11 }}>
                     ✓ {batchResult.saved} image{batchResult.saved !== 1 ? 's' : ''} saved
+                    {batchResult.format === 'yolo' && batchResult.class_count != null && (
+                      <> · {batchResult.class_count} class{batchResult.class_count !== 1 ? 'es' : ''} · data.yaml</>
+                    )}
                     {batchResult.skipped > 0 && `, ${batchResult.skipped} skipped`}
                     {batchResult.errors  > 0 && `, ${batchResult.errors} error${batchResult.errors !== 1 ? 's' : ''}`}
                     &nbsp;→&nbsp;{batchResult.output_dir}
@@ -746,6 +755,92 @@ export default function AugmentTab() {
         )}
 
       </Box>
+
+      {/* ── Export format modal ───────────────────────────────────────────── */}
+      <Dialog
+        open={exportModalOpen}
+        onClose={() => setExportModalOpen(false)}
+        PaperProps={{
+          sx: {
+            bgcolor: '#0f0f18',
+            border: '1px solid rgba(255,255,255,0.10)',
+            borderRadius: 2,
+            minWidth: 340,
+          },
+        }}
+      >
+        <DialogTitle sx={{ fontSize: 13, fontWeight: 700, pb: 0.5 }}>
+          Choose Export Format
+        </DialogTitle>
+        <DialogContent sx={{ pb: 1 }}>
+          <Typography sx={{ fontSize: 11, color: 'text.secondary', mb: 1.5 }}>
+            {batchMatchCount} symbol{batchMatchCount !== 1 ? 's' : ''}
+            &nbsp;·&nbsp;
+            {batchMatchCount * count} image{batchMatchCount * count !== 1 ? 's' : ''} total
+          </Typography>
+
+          <Stack gap={1}>
+            {/* Raw PNG */}
+            <Box
+              onClick={() => handleBatch('png')}
+              sx={{
+                display: 'flex', alignItems: 'center', gap: 1.5,
+                p: 1.5, borderRadius: 1.5, cursor: 'pointer',
+                border: '1px solid rgba(255,255,255,0.10)',
+                transition: 'border-color 0.15s, background 0.15s',
+                '&:hover': {
+                  bgcolor: 'rgba(78,201,176,0.07)',
+                  borderColor: '#4ec9b0',
+                },
+              }}
+            >
+              <PhotoLibraryIcon sx={{ fontSize: 30, color: '#4ec9b0', flexShrink: 0 }} />
+              <Box>
+                <Typography sx={{ fontSize: 12, fontWeight: 700, color: 'text.primary', lineHeight: 1.3 }}>
+                  Raw PNG
+                </Typography>
+                <Typography sx={{ fontSize: 10, color: 'text.secondary', mt: 0.25 }}>
+                  Save augmented images as flat .png files
+                </Typography>
+              </Box>
+            </Box>
+
+            {/* YOLO Dataset */}
+            <Box
+              onClick={() => handleBatch('yolo')}
+              sx={{
+                display: 'flex', alignItems: 'center', gap: 1.5,
+                p: 1.5, borderRadius: 1.5, cursor: 'pointer',
+                border: '1px solid rgba(255,255,255,0.10)',
+                transition: 'border-color 0.15s, background 0.15s',
+                '&:hover': {
+                  bgcolor: 'rgba(129,140,248,0.07)',
+                  borderColor: '#818cf8',
+                },
+              }}
+            >
+              <AccountTreeIcon sx={{ fontSize: 30, color: '#818cf8', flexShrink: 0 }} />
+              <Box>
+                <Typography sx={{ fontSize: 12, fontWeight: 700, color: 'text.primary', lineHeight: 1.3 }}>
+                  YOLO Dataset
+                </Typography>
+                <Typography sx={{ fontSize: 10, color: 'text.secondary', mt: 0.25 }}>
+                  YOLOv8 format · images/train/ + labels/train/ + data.yaml
+                </Typography>
+              </Box>
+            </Box>
+          </Stack>
+        </DialogContent>
+        <DialogActions sx={{ px: 2, pb: 1.5 }}>
+          <Button
+            size="small"
+            onClick={() => setExportModalOpen(false)}
+            sx={{ fontSize: 11, color: 'text.disabled' }}
+          >
+            Cancel
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }

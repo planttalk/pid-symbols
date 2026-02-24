@@ -720,6 +720,30 @@ def _augment_generate(body: dict) -> tuple[dict | None, str]:
         return None, str(exc)
 
 
+def _tight_bbox_yolo(arr) -> tuple | None:
+    """Return YOLO-normalised (cx, cy, w, h) bounding box for non-white pixels.
+
+    Scans *arr* (uint8 HxWx3) for pixels whose mean channel value is below 240
+    and returns the normalised centre + size of their tight bounding box.
+    Returns ``None`` if the image is blank (all white).
+    """
+    import numpy as _np
+    gray = arr.mean(axis=2)
+    mask = gray < 240
+    rows = _np.where(mask.any(axis=1))[0]
+    cols = _np.where(mask.any(axis=0))[0]
+    if not len(rows) or not len(cols):
+        return None
+    H, W = arr.shape[:2]
+    r0, r1 = int(rows[0]), int(rows[-1])
+    c0, c1 = int(cols[0]), int(cols[-1])
+    cx = ((c0 + c1) / 2.0) / W
+    cy = ((r0 + r1) / 2.0) / H
+    bw = (c1 - c0 + 1.0) / W
+    bh = (r1 - r0 + 1.0) / H
+    return (cx, cy, bw, bh)
+
+
 def _augment_batch(body: dict):
     """Generator: yields SSE progress events while augmenting a filtered symbol set.
 
@@ -729,7 +753,8 @@ def _augment_batch(body: dict):
     {"type": "progress", "current": i, "total": N, "name": str,
                          "status": "ok"|"skipped"|"error", "saved": cumulative}
     {"type": "done",     "processed": N, "saved": N, "skipped": N,
-                         "errors": N, "output_dir": str}
+                         "errors": N, "output_dir": str,
+                         "format": "png"|"yolo", ["class_count": N]}
     """
     import io as _io
     import base64
@@ -742,6 +767,7 @@ def _augment_batch(body: dict):
     count     = max(1,  min(200,  int(body.get("count", 1))))
     out_str   = (body.get("output_dir") or "").strip() or "./augmented"
     rand_per  = bool(body.get("randomize_per_image", False))
+    fmt       = body.get("format", "png")   # "png" | "yolo"
 
     symbols = _list_symbols()
     if source:   symbols = [s for s in symbols if s["source"]   == source]
@@ -750,7 +776,7 @@ def _augment_batch(body: dict):
 
     if total == 0:
         yield {"type": "done", "processed": 0, "saved": 0,
-               "skipped": 0, "errors": 0, "output_dir": out_str}
+               "skipped": 0, "errors": 0, "output_dir": out_str, "format": fmt}
         return
 
     yield {"type": "start", "total": total}
@@ -762,11 +788,39 @@ def _augment_batch(body: dict):
         from src.svg_utils import _render_svg_to_png
     except Exception as exc:
         yield {"type": "done", "processed": 0, "saved": 0, "skipped": total,
-               "errors": 1, "output_dir": out_str, "error": str(exc)}
+               "errors": 1, "output_dir": out_str, "format": fmt, "error": str(exc)}
         return
 
     out_dir = pathlib.Path(out_str)
     out_dir.mkdir(parents=True, exist_ok=True)
+
+    # ── YOLO setup ────────────────────────────────────────────────────────────
+    if fmt == "yolo":
+        # Extract category from the 2nd-to-last path segment (works for 3- and 4-part IDs)
+        all_cats = sorted({
+            sym["path"].split("/")[-2]
+            for sym in symbols
+            if len(sym["path"].split("/")) >= 3
+        })
+        class_map  = {cat: i for i, cat in enumerate(all_cats)}
+        n_classes  = len(all_cats)
+        img_dir    = out_dir / "images" / "train"
+        lbl_dir    = out_dir / "labels" / "train"
+        img_dir.mkdir(parents=True, exist_ok=True)
+        lbl_dir.mkdir(parents=True, exist_ok=True)
+        # Write data.yaml (no PyYAML dependency — plain string)
+        names_block = "\n".join(f"  {i}: {c}" for i, c in enumerate(all_cats))
+        (out_dir / "data.yaml").write_text(
+            f"path: {out_dir.resolve()}\n"
+            f"train: images/train\n"
+            f"nc: {n_classes}\n"
+            f"names:\n{names_block}\n",
+            encoding="utf-8",
+        )
+    else:
+        img_dir   = out_dir
+        class_map = {}
+        n_classes = 0
 
     processed = saved = skipped = errors = 0
 
@@ -795,8 +849,14 @@ def _augment_batch(body: dict):
                 img = img.resize((size, size), Image.LANCZOS)
             arr = np.array(img, dtype=np.uint8)
 
-            # Use slugified sym_id as filename prefix to avoid collisions
             stem = sym_id.replace("/", "_")
+
+            # YOLO: class index for this symbol
+            if fmt == "yolo":
+                parts   = sym_id.split("/")
+                cat     = parts[-2] if len(parts) >= 3 else "unknown"
+                cls_idx = class_map.get(cat, 0)
+
             for j in range(count):
                 if rand_per:
                     n      = _random.randint(3, 7)
@@ -810,8 +870,19 @@ def _augment_batch(body: dict):
                 else:
                     varied = {}
 
-                out = apply_effects(arr.copy(), varied)
-                Image.fromarray(out).save(out_dir / f"{stem}_aug_{j + 1:04d}.png")
+                out_arr = apply_effects(arr.copy(), varied)
+                fname   = f"{stem}_aug_{j + 1:04d}"
+                Image.fromarray(out_arr).save(img_dir / f"{fname}.png")
+
+                if fmt == "yolo":
+                    bbox = _tight_bbox_yolo(out_arr)
+                    if bbox:
+                        cx, cy, bw, bh = bbox
+                        (lbl_dir / f"{fname}.txt").write_text(
+                            f"{cls_idx} {cx:.6f} {cy:.6f} {bw:.6f} {bh:.6f}\n",
+                            encoding="utf-8",
+                        )
+
                 saved += 1
 
             processed += 1
@@ -824,9 +895,12 @@ def _augment_batch(body: dict):
                    "name": name, "status": "error", "saved": saved,
                    "error": str(exc)}
 
-    yield {"type": "done", "processed": processed, "saved": saved,
-           "skipped": skipped, "errors": errors,
-           "output_dir": str(out_dir.resolve())}
+    done = {"type": "done", "processed": processed, "saved": saved,
+            "skipped": skipped, "errors": errors,
+            "output_dir": str(out_dir.resolve()), "format": fmt}
+    if fmt == "yolo":
+        done["class_count"] = n_classes
+    yield done
 
 
 def _augment_combo(body: dict) -> tuple[dict | None, str]:
