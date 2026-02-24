@@ -41,6 +41,7 @@ export const EFFECT_GROUPS = [
       { name: 'foxing',         label: 'Foxing'         },
       { name: 'crease',         label: 'Crease'         },
       { name: 'wrinkle',        label: 'Wrinkle'        },
+      { name: 'wrinkle_v2',     label: 'Wrinkle v2'     },
       { name: 'water_stain',    label: 'Water Stain'    },
       { name: 'edge_wear',      label: 'Edge Wear'      },
       { name: 'fingerprint',    label: 'Fingerprint'    },

@@ -35,6 +35,9 @@ _EDITOR_ROOT = pathlib.Path(__file__).parent / "editor"
 # Serve from editor/dist/ (React build) when available, otherwise editor/ (legacy)
 EDITOR_DIR = _EDITOR_ROOT / "dist" if (_EDITOR_ROOT / "dist").is_dir() else _EDITOR_ROOT
 
+_UNREALISTIC_REPORTS_FILE = pathlib.Path(__file__).parent / "unrealistic_reports.json"
+_reports_lock = threading.Lock()
+
 # port colour map (shared by _generate_debug)
 _PORT_COLORS: dict[str, str] = {
     "in":        "#2196F3",
@@ -160,6 +163,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
         elif p == "/api/stats":
             self._json(_compute_stats())
 
+        elif p == "/api/flag-reports":
+            self._json(_load_reports())
+
         else:
             self._error("Not found", 404)
 
@@ -216,6 +222,23 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 self._json(result)
             else:
                 self._error(err, 500)
+
+        elif p == "/api/flag-report":
+            entry, err = _flag_report_add(body)
+            if entry is not None:
+                self._json({"ok": True, "entry": entry})
+            else:
+                self._error(err, 500)
+
+        elif p == "/api/flag-report-delete":
+            ok, err = _flag_report_delete(body.get("id", ""))
+            if ok: self._json({"ok": True})
+            else:  self._error(err, 500)
+
+        elif p == "/api/flag-reports-clear":
+            count, err = _flag_reports_clear()
+            if err: self._error(err, 500)
+            else:   self._json({"ok": True, "deleted": count})
 
         else:
             self._error("Not found", 404)
@@ -576,6 +599,86 @@ def _patch_meta(rel: str | None, updates: dict) -> tuple[bool, str]:
         return True, ""
     except OSError as exc:
         return False, str(exc)
+
+
+def _load_reports() -> dict:
+    """Return the unrealistic-reports store, creating an empty one if absent."""
+    try:
+        if _UNREALISTIC_REPORTS_FILE.exists():
+            return json.loads(_UNREALISTIC_REPORTS_FILE.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        pass
+    return {"reports": []}
+
+
+def _save_reports(data: dict) -> tuple[bool, str]:
+    """Atomically write *data* to the reports file under the reports lock."""
+    try:
+        with _reports_lock:
+            tmp = _UNREALISTIC_REPORTS_FILE.with_suffix(".tmp")
+            tmp.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+            tmp.replace(_UNREALISTIC_REPORTS_FILE)
+        return True, ""
+    except OSError as exc:
+        return False, str(exc)
+
+
+def _flag_report_add(body: dict) -> tuple[dict | None, str]:
+    """Append a new unrealistic-flag report entry; return the entry on success."""
+    import time as _time
+    effects = body.get("effects")
+    if not effects:
+        return None, "missing effects"
+    symbol  = body.get("symbol", "")
+    label   = body.get("label", "")
+    source  = body.get("source", "preview")
+    ts_ms   = int(_time.time() * 1000)
+    import datetime as _dt
+    timestamp = _dt.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+    with _reports_lock:
+        data = _load_reports()
+        existing_ids = {e["id"] for e in data["reports"]}
+        seq = 0
+        while f"{ts_ms}-{seq}" in existing_ids:
+            seq += 1
+        entry = {
+            "id":        f"{ts_ms}-{seq}",
+            "timestamp": timestamp,
+            "symbol":    symbol,
+            "label":     label,
+            "effects":   effects,
+            "source":    source,
+        }
+        data["reports"].append(entry)
+        ok, err = _save_reports(data)
+    if not ok:
+        return None, err
+    return entry, ""
+
+
+def _flag_report_delete(report_id: str) -> tuple[bool, str]:
+    """Remove a single report by id."""
+    if not report_id:
+        return False, "missing id"
+    with _reports_lock:
+        data = _load_reports()
+        before = len(data["reports"])
+        data["reports"] = [e for e in data["reports"] if e.get("id") != report_id]
+        if len(data["reports"]) == before:
+            return False, f"report not found: {report_id}"
+        return _save_reports(data)
+
+
+def _flag_reports_clear() -> tuple[int, str]:
+    """Delete all reports; return (count_deleted, error_str)."""
+    with _reports_lock:
+        data = _load_reports()
+        count = len(data["reports"])
+        data["reports"] = []
+        ok, err = _save_reports(data)
+    if not ok:
+        return 0, err
+    return count, ""
 
 
 def _random_geom(arr, rng=None):
@@ -1005,7 +1108,7 @@ def _augment_combo(body: dict) -> tuple[dict | None, str]:
                 buf = _io.BytesIO()
                 Image.fromarray(out).save(buf, format="PNG")
                 b64 = "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode("ascii")
-                combos.append({"src": b64, "label": " + ".join(combo)})
+                combos.append({"src": b64, "label": " + ".join(combo), "effects": combo_effects})
 
         return {"combos": combos, "total": len(combos)}, ""
     except Exception as exc:

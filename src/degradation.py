@@ -1007,6 +1007,113 @@ def wrinkle(img: np.ndarray, intensity: float) -> np.ndarray:
     return _clip(out)
 
 
+def wrinkle_v2(img: np.ndarray, intensity: float) -> np.ndarray:
+    """Physically-based paper cockling: heightmap → gradient displacement → directional lighting.
+
+    Pipeline (based on the paper-cockling model):
+      1. Two-frequency coherent noise heightmap (large rolling wrinkles + micro surface texture)
+      2. S-curve contrast boost to sharpen ridges and deepen valleys
+      3. Gradient-based pixel displacement — image bends over the 3-D surface
+      4. Lambertian diffuse shading from a top-left light source + ambient occlusion
+      5. Per-zone colour tinting: amber/sepia in shadows, warm-white on lit ridges
+    """
+    import cv2
+    rng  = _rng()
+    H, W = img.shape[:2]
+    t    = float(intensity)
+
+    # 2-D value noise via multi-scale bilinear upsampling (numpy + PIL, no extra deps)
+    def _noise2d(scale: int, octaves: int, roughness: float) -> np.ndarray:
+        result    = np.zeros((H, W), dtype=np.float32)
+        amp, freq = 1.0, 1
+        total_amp = 0.0
+        for _ in range(octaves):
+            bh  = max(2, H // max(1, scale * freq))
+            bw  = max(2, W // max(1, scale * freq))
+            raw = rng.uniform(0.0, 1.0, (bh, bw)).astype(np.float32)
+            up  = (np.array(
+                      Image.fromarray((raw * 255).astype(np.uint8))
+                           .resize((W, H), Image.BILINEAR)
+                   ).astype(np.float32) / 255.0)
+            result    += up * amp
+            total_amp += amp
+            amp       *= roughness
+            freq      *= 2
+        lo, hi = result.min(), result.max()
+        return (result - lo) / (hi - lo + 1e-6)
+
+    # 1. Heightmap — blend large rolling wrinkles with micro surface texture
+    large_scale = int(rng.integers(5, 10))  # 5–9: large rolling wrinkles
+    fine_scale  = int(rng.integers(2, 4))   # 2–3: micro surface texture
+    h = _noise2d(large_scale, octaves=5, roughness=0.60) * 0.80 \
+      + _noise2d(fine_scale,  octaves=3, roughness=0.55) * 0.20
+
+    # S-curve contrast boost: sharpens ridge peaks, deepens valley troughs
+    h = np.clip((h - 0.5) * (1.0 + t * 1.4) + 0.5, 0.0, 1.0)
+
+    # 2. Gradient → pixel displacement (image bends over the height surface)
+    grad_x   = (np.roll(h, -1, axis=1) - np.roll(h, 1, axis=1)) * 0.5
+    grad_y   = (np.roll(h, -1, axis=0) - np.roll(h, 1, axis=0)) * 0.5
+    disp_amp = t * min(H, W) * 0.10   # max displacement ≈ 10 % of image size
+
+    xs, ys   = np.arange(W, dtype=np.float32), np.arange(H, dtype=np.float32)
+    XX, YY   = np.meshgrid(xs, ys)
+    map_x    = np.clip(XX + grad_x * disp_amp, 0, W - 1).astype(np.float32)
+    map_y    = np.clip(YY + grad_y * disp_amp, 0, H - 1).astype(np.float32)
+    warped   = cv2.remap(img, map_x, map_y, cv2.INTER_LINEAR,
+                         borderMode=cv2.BORDER_REPLICATE)
+
+    # 3. Surface normals — n = normalize(−∂h/∂x, −∂h/∂y, z_scale)
+    #    z_scale controls perceived depth: lower value → steeper apparent normal
+    z_scale = max(0.8, 3.5 - t * 2.8)
+    nx      = -grad_x
+    ny      = -grad_y
+    nz      = np.full((H, W), z_scale, dtype=np.float32)
+    nn      = np.sqrt(nx ** 2 + ny ** 2 + nz ** 2) + 1e-8
+    nx /= nn;  ny /= nn;  nz /= nn
+
+    # Light direction: top-left, ≈55° elevation → normalize(−0.6, −0.6, 1.1)
+    lx, ly, lz = -0.6, -0.6, 1.1
+    ln          = np.sqrt(lx ** 2 + ly ** 2 + lz ** 2)
+    lx /= ln;  ly /= ln;  lz /= ln
+
+    # Lambertian diffuse [0, 1]
+    diffuse = np.clip(nx * lx + ny * ly + nz * lz, 0.0, 1.0)
+
+    # Ambient occlusion: valleys (low h) trap less ambient light
+    ao = np.clip(1.0 - (1.0 - h) ** 2.0 * 0.60, 0.0, 1.0)
+
+    # 4. Brightness factor
+    #    Neutral = 1.0; deepest shadowed valley ≈ 0.45; brightest lit ridge ≈ 1.35
+    shadow_depth    = 0.55 * t
+    highlight_boost = 0.35 * t
+    brightness      = (1.0 - shadow_depth + diffuse * ao * (shadow_depth + highlight_boost))
+    brightness      = brightness.clip(0.40, 1.45)
+
+    out = warped.astype(np.float32) * brightness[..., None]
+
+    # 5. Per-zone colour tinting
+    # Valley mask: low heightmap + facing away from light → warm amber/sepia
+    valley = np.clip((1.0 - h) * (1.0 - diffuse), 0.0, 1.0)
+    valley /= valley.max() + 1e-6
+
+    # Ridge mask: high heightmap + facing light → warm-white specular
+    ridge  = np.clip(h * diffuse, 0.0, 1.0)
+    ridge  /= ridge.max() + 1e-6
+
+    # Amber shadows (R strongly up, G slightly, B down)
+    out[..., 0] = np.clip(out[..., 0] + valley * 46 * t, 0, 255)
+    out[..., 1] = np.clip(out[..., 1] + valley * 16 * t, 0, 255)
+    out[..., 2] = np.clip(out[..., 2] - valley * 36 * t, 0, 255)
+
+    # Warm-white ridges (all channels up, slight warm bias)
+    out[..., 0] = np.clip(out[..., 0] + ridge * 54 * t, 0, 255)
+    out[..., 1] = np.clip(out[..., 1] + ridge * 50 * t, 0, 255)
+    out[..., 2] = np.clip(out[..., 2] + ridge * 42 * t, 0, 255)
+
+    return _clip(out)
+
+
 def pencil_marks(img: np.ndarray, intensity: float) -> np.ndarray:
     """Light pencil / handwriting annotation strokes."""
     rng  = _rng()
@@ -1310,6 +1417,7 @@ EFFECTS: dict[str, callable] = {
     "hole_punch":        hole_punch,
     "tape_residue":      tape_residue,
     "wrinkle":           wrinkle,
+    "wrinkle_v2":        wrinkle_v2,
     "pencil_marks":      pencil_marks,
     "ink_loss":          ink_loss,
     "tear":              tear,
@@ -1364,7 +1472,7 @@ _APPLY_ORDER: list[str] = [
     # Physical
     "yellowing", "foxing", "crease", "water_stain", "edge_wear",
     "fingerprint", "binding_shadow", "bleed_through", "hole_punch", "tape_residue",
-    "wrinkle", "pencil_marks", "ink_loss", "tear", "paper_fold",
+    "wrinkle", "wrinkle_v2", "pencil_marks", "ink_loss", "tear", "paper_fold",
     # Biological
     "mold", "mildew", "bio_foxing", "insect_damage",
     # Chemical

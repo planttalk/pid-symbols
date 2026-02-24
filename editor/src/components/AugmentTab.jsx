@@ -17,6 +17,9 @@ import CloseIcon            from '@mui/icons-material/Close';
 import GridViewIcon         from '@mui/icons-material/GridView';
 import PhotoLibraryIcon     from '@mui/icons-material/PhotoLibrary';
 import AccountTreeIcon      from '@mui/icons-material/AccountTree';
+import FlagIcon             from '@mui/icons-material/Flag';
+import RefreshIcon          from '@mui/icons-material/Refresh';
+import DeleteOutlineIcon    from '@mui/icons-material/DeleteOutline';
 import { useEditorStore } from '../store';
 import { EFFECT_GROUPS, ALL_EFFECT_NAMES } from '../constants';
 
@@ -86,7 +89,7 @@ function EffectGroup({ group, augEffects, onChange, onToggle }) {
 }
 
 // Lightbox modal
-function Lightbox({ images, idx, onClose, onGoto }) {
+function Lightbox({ images, idx, onClose, onGoto, flagged, onFlag }) {
   const img = images[idx];
 
   useEffect(() => {
@@ -164,6 +167,25 @@ function Lightbox({ images, idx, onClose, onGoto }) {
             {img.label} &nbsp;·&nbsp; {idx + 1} / {images.length}
           </Typography>
 
+          {/* Flag as unrealistic button */}
+          {onFlag && (
+            <Button
+              size="small"
+              startIcon={<FlagIcon sx={{ fontSize: 13 }} />}
+              onClick={e => { e.stopPropagation(); onFlag(idx); }}
+              sx={{
+                mt: 1,
+                fontSize: 10,
+                borderRadius: '6px',
+                ...(flagged?.has(idx)
+                  ? { borderColor: '#ef4444', color: '#ef4444', bgcolor: 'rgba(239,68,68,0.12)', border: '1px solid' }
+                  : { borderColor: 'rgba(255,255,255,0.2)', color: 'rgba(255,255,255,0.45)', border: '1px solid' }),
+              }}
+            >
+              {flagged?.has(idx) ? 'Flagged as unrealistic' : 'Flag as unrealistic'}
+            </Button>
+          )}
+
           {/* Applied effects chips */}
           {effectEntries.length > 0 && (
             <Box sx={{ mt: 1, maxWidth: '80vw' }}>
@@ -190,12 +212,38 @@ function Lightbox({ images, idx, onClose, onGoto }) {
 }
 
 // ── Smart grid: adaptive cols + pagination for large sets ─────────────────────
-function SmartGrid({ images, label, onClear }) {
+function SmartGrid({ images, label, onClear, currentPath, source, onFlagged }) {
   const [page,        setPage]        = useState(0);
   const [lightboxIdx, setLightboxIdx] = useState(null);
+  const [flagged,     setFlagged]     = useState(new Set());
 
   // Reset to first page whenever the image set changes
-  useEffect(() => { setPage(0); setLightboxIdx(null); }, [images]);
+  useEffect(() => { setPage(0); setLightboxIdx(null); setFlagged(new Set()); }, [images]);
+
+  const handleFlag = useCallback(async (absIdx) => {
+    const img = images[absIdx];
+    if (!img?.effects) return;
+    if (flagged.has(absIdx)) {
+      setFlagged(prev => { const s = new Set(prev); s.delete(absIdx); return s; });
+      return;
+    }
+    try {
+      const res = await fetch('/api/flag-report', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          symbol:  currentPath || '',
+          label:   img.label || `#${absIdx + 1}`,
+          effects: img.effects,
+          source:  source || 'preview',
+        }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      setFlagged(prev => new Set([...prev, absIdx]));
+      onFlagged?.();
+    } catch (e) {
+      console.error('flag-report failed', e);
+    }
+  }, [images, flagged, currentPath, source, onFlagged]);
 
   if (!images.length) return null;
 
@@ -258,6 +306,18 @@ function SmartGrid({ images, label, onClear }) {
                 alt={img.label}
                 sx={{ width: '100%', aspectRatio: '1', objectFit: 'contain', bgcolor: 'white', borderRadius: 0.5 }}
               />
+              {/* Flag badge */}
+              {flagged.has(absIdx) && (
+                <Box sx={{
+                  position: 'absolute', top: 3, left: 3,
+                  width: 14, height: 14, borderRadius: '50%',
+                  bgcolor: '#ef4444',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  zIndex: 2, pointerEvents: 'none',
+                }}>
+                  <FlagIcon sx={{ fontSize: 9, color: '#fff' }} />
+                </Box>
+              )}
               {/* Effects count badge */}
               {fxEntries.length > 0 && (
                 <Tooltip
@@ -305,9 +365,150 @@ function SmartGrid({ images, label, onClear }) {
           idx={lightboxIdx}
           onClose={() => setLightboxIdx(null)}
           onGoto={openLightbox}
+          flagged={flagged}
+          onFlag={handleFlag}
         />
       )}
     </Box>
+  );
+}
+
+// ── Reports panel ─────────────────────────────────────────────────────────────
+function ReportsPanel({ refreshKey }) {
+  const [reports, setReports] = useState([]);
+
+  const fetchReports = useCallback(async () => {
+    try {
+      const res = await fetch('/api/flag-reports');
+      if (!res.ok) return;
+      const data = await res.json();
+      const sorted = [...(data.reports || [])].sort((a, b) => b.id.localeCompare(a.id));
+      setReports(sorted);
+    } catch (_) {}
+  }, []);
+
+  useEffect(() => { fetchReports(); }, [fetchReports, refreshKey]);
+
+  const handleDelete = useCallback(async (id) => {
+    try {
+      const res = await fetch('/api/flag-report-delete', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id }),
+      });
+      if (res.ok) setReports(prev => prev.filter(r => r.id !== id));
+    } catch (_) {}
+  }, []);
+
+  const handleClearAll = useCallback(async () => {
+    try {
+      const res = await fetch('/api/flag-reports-clear', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+      if (res.ok) setReports([]);
+    } catch (_) {}
+  }, []);
+
+  return (
+    <Accordion disableGutters defaultExpanded={false} sx={{ mt: 0.5 }}>
+      <AccordionSummary expandIcon={<ExpandMoreIcon sx={{ fontSize: 14 }} />}>
+        <Stack direction="row" alignItems="center" gap={1} sx={{ flex: 1, mr: 1 }}>
+          <FlagIcon sx={{ fontSize: 13, color: '#ef4444' }} />
+          <Typography sx={{ fontSize: 11, color: '#ef4444' }}>
+            Effect Reports
+            {reports.length > 0 && (
+              <span style={{ color: 'rgba(239,68,68,0.7)', marginLeft: 4 }}>({reports.length})</span>
+            )}
+          </Typography>
+          <Box sx={{ flex: 1 }} />
+          {reports.length > 0 && (
+            <Tooltip title="Clear all reports" disableInteractive>
+              <IconButton
+                size="small"
+                onClick={e => { e.stopPropagation(); handleClearAll(); }}
+                sx={{ color: 'rgba(239,68,68,0.6)', '&:hover': { color: '#ef4444' }, p: '2px' }}
+              >
+                <DeleteOutlineIcon sx={{ fontSize: 13 }} />
+              </IconButton>
+            </Tooltip>
+          )}
+          <Tooltip title="Refresh" disableInteractive>
+            <IconButton
+              size="small"
+              onClick={e => { e.stopPropagation(); fetchReports(); }}
+              sx={{ color: 'text.disabled', '&:hover': { color: 'text.secondary' }, p: '2px' }}
+            >
+              <RefreshIcon sx={{ fontSize: 13 }} />
+            </IconButton>
+          </Tooltip>
+        </Stack>
+      </AccordionSummary>
+      <AccordionDetails sx={{ px: 1, pb: 1, pt: 0 }}>
+        {reports.length === 0 ? (
+          <Typography sx={{ fontSize: 10, color: 'text.disabled', textAlign: 'center', py: 1 }}>
+            No flagged combos yet
+          </Typography>
+        ) : (
+          <Stack gap={0.75}>
+            {reports.map(r => {
+              const stem = r.symbol ? r.symbol.split('/').pop() : '—';
+              const effectEntries = Object.entries(r.effects || {}).sort(([, a], [, b]) => b - a);
+              return (
+                <Box key={r.id} sx={{
+                  border: '1px solid rgba(239,68,68,0.2)',
+                  borderRadius: 1, px: 1, py: 0.75,
+                  bgcolor: 'rgba(239,68,68,0.04)',
+                }}>
+                  <Stack direction="row" alignItems="flex-start" justifyContent="space-between" gap={0.5}>
+                    <Box sx={{ flex: 1, minWidth: 0 }}>
+                      <Stack direction="row" alignItems="center" gap={0.5} sx={{ mb: 0.25 }}>
+                        <Typography sx={{ fontSize: 10, color: 'text.primary', fontFamily: 'monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {stem}
+                        </Typography>
+                        <Typography sx={{ fontSize: 9, color: 'text.disabled' }}>
+                          {r.label}
+                        </Typography>
+                        <Box sx={{
+                          fontSize: 8, color: 'rgba(239,68,68,0.6)',
+                          border: '1px solid rgba(239,68,68,0.25)', borderRadius: 0.5,
+                          px: '3px', py: '1px', flexShrink: 0,
+                        }}>
+                          {r.source || 'preview'}
+                        </Box>
+                      </Stack>
+                      <Typography sx={{ fontSize: 9, color: 'text.disabled', mb: 0.5 }}>
+                        {r.timestamp}
+                      </Typography>
+                      <Stack direction="row" flexWrap="wrap" gap={0.4}>
+                        {effectEntries.map(([name, val]) => (
+                          <Box key={name} sx={{
+                            bgcolor: 'rgba(239,68,68,0.10)',
+                            border: '1px solid rgba(239,68,68,0.25)',
+                            borderRadius: 0.5, px: 0.6, py: '1px',
+                            fontSize: 9, color: 'rgba(255,255,255,0.65)',
+                            fontFamily: '"JetBrains Mono", "Cascadia Code", Consolas, monospace',
+                            whiteSpace: 'nowrap',
+                          }}>
+                            {name}&nbsp;<span style={{ color: '#f87171' }}>{Math.round(val * 100)}%</span>
+                          </Box>
+                        ))}
+                      </Stack>
+                    </Box>
+                    <IconButton
+                      size="small"
+                      onClick={() => handleDelete(r.id)}
+                      sx={{ color: 'text.disabled', '&:hover': { color: '#ef4444' }, p: '2px', flexShrink: 0 }}
+                    >
+                      <CloseIcon sx={{ fontSize: 12 }} />
+                    </IconButton>
+                  </Stack>
+                </Box>
+              );
+            })}
+          </Stack>
+        )}
+      </AccordionDetails>
+    </Accordion>
   );
 }
 
@@ -332,6 +533,8 @@ export default function AugmentTab() {
   const [comboImages,  setComboImages]  = useState([]);
   const [comboMsg,     setComboMsg]     = useState(null);
   const [maxCombo,     setMaxCombo]     = useState(3);
+  const [imagesSource,      setImagesSource]      = useState('preview');
+  const [reportRefreshKey,  setReportRefreshKey]  = useState(0);
 
   // ── Batch state ──────────────────────────────────────────────────────────────
   const [batchSource,      setBatchSource]      = useState('');
@@ -392,7 +595,7 @@ export default function AugmentTab() {
       });
       if (!res.ok) throw new Error(await res.text());
       const data = await res.json();
-      const imgs = (data.combos || []).map(c => ({ src: c.src, label: c.label }));
+      const imgs = (data.combos || []).map(c => ({ src: c.src, label: c.label, effects: c.effects || null }));
       setComboImages(imgs);
       if (!imgs.length) setComboMsg({ err: 'No effects selected — enable at least one.' });
     } catch (e) {
@@ -411,6 +614,7 @@ export default function AugmentTab() {
     const abort = new AbortController();
     previewAbortRef.current = abort;
     setPreviewing(true);
+    setImagesSource('preview');
     setMsg(null);
     setImages([]);
     try {
@@ -515,6 +719,7 @@ export default function AugmentTab() {
     const abort = new AbortController();
     generateAbortRef.current = abort;
     setSaving(true);
+    setImagesSource('generate');
     setMsg(null);
     setImages([]);
     try {
@@ -825,7 +1030,13 @@ export default function AugmentTab() {
             <CircularProgress size={24} />
           </Box>
         ) : (
-          <SmartGrid images={images} label={imagesLabel} />
+          <SmartGrid
+            images={images}
+            label={imagesLabel}
+            currentPath={currentPath}
+            source={imagesSource}
+            onFlagged={() => setReportRefreshKey(k => k + 1)}
+          />
         )}
 
         {/* Combo results */}
@@ -843,8 +1054,14 @@ export default function AugmentTab() {
             images={comboImages}
             label={`Combinations (1–${maxCombo} effects)`}
             onClear={() => { setComboImages([]); setComboMsg(null); }}
+            currentPath={currentPath}
+            source="combo"
+            onFlagged={() => setReportRefreshKey(k => k + 1)}
           />
         )}
+
+        <Divider sx={{ my: 1 }} />
+        <ReportsPanel refreshKey={reportRefreshKey} />
 
       </Box>
 
