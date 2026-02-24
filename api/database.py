@@ -1,12 +1,13 @@
 """database.py — SQLite persistence layer for the collaborative review API."""
 from __future__ import annotations
 
+import os
 import secrets
 import sqlite3
 from contextlib import contextmanager
 from pathlib import Path
 
-DB_PATH = Path(__file__).parent / "review.db"
+DB_PATH = Path(os.environ.get("REVIEW_DB_PATH", Path(__file__).parent / "review.db"))
 
 # ── Schema ─────────────────────────────────────────────────────────────────────
 

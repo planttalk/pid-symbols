@@ -1,0 +1,36 @@
+services:
+
+  # ── Symbol Studio ─────────────────────────────────────────────────────────
+  # Browser-based port editor + augmentation viewer.
+  # Access at http://localhost:${PORT} (default 43070).
+  studio:
+    build: .
+    command: python symbol_studio.py --host 0.0.0.0 --port 43070
+    ports:
+      - "${PORT:-43070}:43070"
+    volumes:
+      - ./processed:/app/processed
+      - ./input:/app/input
+      - ./augmented:/app/augmented
+    environment:
+      NO_BROWSER: "1"
+    restart: unless-stopped
+
+  # ── Collaborative Review API ──────────────────────────────────────────────
+  # FastAPI service for multi-user port review workflow.
+  # Access at http://localhost:${API_PORT} (default 8000).
+  #
+  # First-time setup (run once):
+  #   docker compose run --rm api python api/init_db.py init
+  #   docker compose run --rm api python api/init_db.py create-key "Alice"
+  api:
+    build: .
+    command: uvicorn api.server:app --host 0.0.0.0 --port 8000
+    ports:
+      - "${API_PORT:-8000}:8000"
+    volumes:
+      - ./processed:/app/processed
+      - ./data:/app/data
+    environment:
+      REVIEW_DB_PATH: /app/data/review.db
+    restart: unless-stopped

@@ -975,13 +975,18 @@ def main(argv: list[str] | None = None) -> None:
         help="Path to the symbols root directory (default: ./processed).",
     )
     parser.add_argument(
-        "--port", type=int, default=7421,
-        help="Local HTTP port (default: 7421).",
+        "--port", type=int, default=int(os.environ.get("PORT", 7421)),
+        help="Local HTTP port (default: 7421, or $PORT env var).",
+    )
+    parser.add_argument(
+        "--host", default=os.environ.get("HOST", "127.0.0.1"),
+        help="Bind address (default: 127.0.0.1, or $HOST env var). Use 0.0.0.0 for Docker.",
     )
     args = parser.parse_args(argv)
 
     SYMBOLS_ROOT = pathlib.Path(args.symbols).resolve()
     SERVER_PORT  = args.port
+    SERVER_HOST  = args.host
 
     if not SYMBOLS_ROOT.is_dir():
         print(f"Error: symbols directory not found: {SYMBOLS_ROOT}")
@@ -991,15 +996,17 @@ def main(argv: list[str] | None = None) -> None:
         print(f"Error: editor/ directory not found: {EDITOR_DIR}")
         return
 
-    url    = f"http://127.0.0.1:{SERVER_PORT}"
-    server = http.server.ThreadingHTTPServer(("127.0.0.1", SERVER_PORT), Handler)
+    display_host = "127.0.0.1" if SERVER_HOST == "0.0.0.0" else SERVER_HOST
+    url    = f"http://{display_host}:{SERVER_PORT}"
+    server = http.server.ThreadingHTTPServer((SERVER_HOST, SERVER_PORT), Handler)
 
     print(f"Symbol Studio  →  {url}")
     print(f"Symbols root →  {SYMBOLS_ROOT}")
     print(f"Editor dir   →  {EDITOR_DIR}")
     print("Press Ctrl+C to stop.")
 
-    threading.Timer(0.6, lambda: webbrowser.open(url)).start()
+    if not os.environ.get("NO_BROWSER"):
+        threading.Timer(0.6, lambda: webbrowser.open(url)).start()
     try:
         server.serve_forever()
     except KeyboardInterrupt:

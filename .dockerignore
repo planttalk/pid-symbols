@@ -1,0 +1,33 @@
+# Python
+.venv/
+__pycache__/
+**/__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.python-version
+
+# Node
+editor/node_modules/
+editor/.vite/
+
+# Local build output (rebuilt inside Docker via multi-stage)
+editor/dist/
+
+# Git / IDE
+.git/
+.gitignore
+.idea/
+.claude/
+
+# Data volumes (mounted at runtime, not baked into image)
+processed/
+input/
+augmented/
+completed/
+data/
+*.db
+
+# Logs / temp
+*.log
+*.tmp
