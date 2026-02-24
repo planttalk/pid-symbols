@@ -291,7 +291,7 @@ def export_yolo_datasets(
         and s.get("classification", {}).get("confidence", "none") != "none"
     ]
 
-    # ── Apply origin / standard filters ───────────────────────────────────────
+    # Apply origin / standard filters
     if origin:
         symbols = [s for s in symbols if s.get("id", "").split("/")[0] == origin]
     if standard:
@@ -339,7 +339,7 @@ def export_yolo_datasets(
                 d.mkdir(parents=True, exist_ok=True)
             (dataset_dir / "data.yaml").write_text(yaml_content, encoding="utf-8")
 
-        # ── Render all symbols; build pool for composite generation ───────────
+        # Render all symbols; build pool for composite generation
         pool: list[tuple] = []      # (img_arr, class_idx) — all categories mixed
         aug_global = 0              # monotonic counter for train/val split (mod 5)
 
@@ -381,7 +381,7 @@ def export_yolo_datasets(
             cx, cy, bw, bh = bbox
             stem = sym.get("id", svg_file.stem).replace("/", "_")
 
-            # ── Per-symbol augmented images ───────────────────────────────────
+            # Per-symbol augmented images
             for i in range(count):
                 try:
                     result = transform(
@@ -414,7 +414,7 @@ def export_yolo_datasets(
                 total_written += 1
                 aug_global    += 1
 
-        # ── Multi-symbol composite images ─────────────────────────────────────
+        # Multi-symbol composite images
         if pool and compose_count > 0:
             print(f"  Compositing {compose_count} multi-symbol images...")
             for i in range(compose_count):

@@ -1,4 +1,4 @@
-# ── Stage 1: Build React/Vite frontend ─────────────────────────────────────────
+# Stage 1: Build React/Vite frontend
 FROM node:20-slim AS frontend-builder
 
 WORKDIR /build/editor
@@ -7,7 +7,7 @@ RUN npm ci --quiet
 COPY editor/ ./
 RUN npm run build
 
-# ── Stage 2: Python runtime ──────────────────────────────────────────────────
+# Stage 2: Python runtime
 FROM python:3.11-slim
 
 WORKDIR /app

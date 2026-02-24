@@ -13,7 +13,7 @@ import re
 
 SCHEMA_VERSION = "1.0.0"
 
-# ── Classification maps ──────────────────────────────────────────────────────
+# Classification maps
 
 # autocad-parser subfolder → (standard, category)
 AUTOCAD_FOLDER_MAP: dict[str, tuple[str, str]] = {
@@ -171,7 +171,7 @@ KEYWORD_HEURISTICS: list[tuple[str, str]] = [
     ("vent",          "piping"),
 ]
 
-# ── Regex patterns ───────────────────────────────────────────────────────────
+# Regex patterns
 
 # Files that are reference sheets / full drawings — not individual symbols
 _REFERENCE_SHEET_PATTERNS: list[str] = [
@@ -187,7 +187,7 @@ _REFERENCE_RE = re.compile(
 # Pattern to extract standard from filename: "(ISO 10628-2)" or "(DIN 2429)"
 _STANDARD_RE = re.compile(r'\(\s*((?:ISO|DIN|ISA)\s*[\d\-]+(?:-\d+)?)\s*\)', re.IGNORECASE)
 
-# ── SVG category sets ────────────────────────────────────────────────────────
+# SVG category sets
 
 # Valve-like categories: horizontal in/out connection geometry
 _VALVE_CATS: frozenset[str] = frozenset({
@@ -202,7 +202,7 @@ _BUBBLE_CATS: frozenset[str] = frozenset({"instrument_bubble", "instrument", "an
 # Categories whose connection geometry is top/bottom (process/signal)
 _ACTUATOR_CATS: frozenset[str] = frozenset({"actuator", "fail_position"})
 
-# ── Metadata / path constants ────────────────────────────────────────────────
+# Metadata / path constants
 
 # Categories that belong under processed/pip/ regardless of standard
 PIP_CATEGORIES: frozenset[str] = frozenset({"piping", "line_type", "pipe"})
@@ -210,7 +210,7 @@ PIP_CATEGORIES: frozenset[str] = frozenset({"piping", "line_type", "pipe"})
 # Filename prefixes that identify PIP (Process Industry Practices) standard symbols
 PIPING_STEM_PREFIXES: tuple[str, ...] = ("pip_", "pipa_")
 
-# ── SVG minification ─────────────────────────────────────────────────────────
+# SVG minification
 
 # Ordered list of (compiled regex, replacement) for SVG minification
 _MINIFY_PATTERNS: list[tuple[re.Pattern, str]] = [

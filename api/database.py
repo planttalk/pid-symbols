@@ -9,7 +9,7 @@ from pathlib import Path
 
 DB_PATH = Path(os.environ.get("REVIEW_DB_PATH", Path(__file__).parent / "review.db"))
 
-# ── Schema ─────────────────────────────────────────────────────────────────────
+# Schema
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS api_keys (
@@ -38,7 +38,7 @@ CREATE TABLE IF NOT EXISTS port_submissions (
 );
 """
 
-# ── Connection context manager ──────────────────────────────────────────────────
+# Connection context manager
 
 @contextmanager
 def get_db():
@@ -61,7 +61,7 @@ def init_db() -> None:
         conn.executescript(_SCHEMA)
 
 
-# ── API key CRUD ────────────────────────────────────────────────────────────────
+# API key CRUD
 
 def create_api_key(label: str, role: str = "contributor") -> str:
     """Generate and store a new Bearer token; return the raw token."""
@@ -82,7 +82,7 @@ def get_api_key(token: str) -> sqlite3.Row | None:
     return row
 
 
-# ── Symbol state CRUD ───────────────────────────────────────────────────────────
+# Symbol state CRUD
 
 def get_symbol_state(symbol_id: str) -> sqlite3.Row | None:
     with get_db() as conn:
@@ -117,7 +117,7 @@ def upsert_symbol_state(symbol_id: str, **fields) -> None:
             )
 
 
-# ── Port submission CRUD ────────────────────────────────────────────────────────
+# Port submission CRUD
 
 def add_port_submission(symbol_id: str, contributor: str, snap_points_json: str, notes: str = "") -> int:
     """Store a port submission and return its row id."""

@@ -25,7 +25,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from . import database as db
 from .models import CompleteRequest, PortSubmissionRequest, ReviewRequest
 
-# ── Paths ───────────────────────────────────────────────────────────────────────
+# Paths
 REPO_ROOT    = Path(__file__).resolve().parent.parent
 PROCESSED_DIR = REPO_ROOT / "processed"
 
@@ -33,7 +33,7 @@ app = FastAPI(title="P&ID Symbol Review API", version="1.0.0")
 security = HTTPBearer()
 
 
-# ── Auth ────────────────────────────────────────────────────────────────────────
+# Auth
 
 def require_auth(credentials: HTTPAuthorizationCredentials = Depends(security)):
     """Validate Bearer token; return the api_keys row."""
@@ -49,7 +49,7 @@ def require_reviewer(auth=Depends(require_auth)):
     return auth
 
 
-# ── Path safety ─────────────────────────────────────────────────────────────────
+# Path safety
 
 def _safe_symbol_path(symbol_id: str) -> Path:
     """Resolve symbol_id to an absolute path under PROCESSED_DIR (guard traversal)."""
@@ -62,7 +62,7 @@ def _safe_symbol_path(symbol_id: str) -> Path:
     return resolved
 
 
-# ── Registry helper ─────────────────────────────────────────────────────────────
+# Registry helper
 
 def _load_registry() -> list[dict]:
     reg_path = PROCESSED_DIR / "registry.json"
@@ -88,7 +88,7 @@ def _merge_state(sym: dict, state_rows: dict[str, dict]) -> dict:
     }
 
 
-# ── Endpoints ───────────────────────────────────────────────────────────────────
+# Endpoints
 
 @app.get("/health")
 def health():

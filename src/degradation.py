@@ -22,7 +22,7 @@ import numpy as np
 from PIL import Image, ImageFilter
 
 
-# ── Helpers ───────────────────────────────────────────────────────────────────
+# Helpers
 
 def _clip(arr: np.ndarray) -> np.ndarray:
     return np.clip(arr, 0, 255).astype(np.uint8)
@@ -89,7 +89,7 @@ def _paper_texture(H: int, W: int, rng: 'np.random.Generator | None' = None) -> 
     return np.clip(base, 200, 255).astype(np.uint8)
 
 
-# ── Physical ──────────────────────────────────────────────────────────────────
+# Physical
 
 def yellowing(img: np.ndarray, intensity: float) -> np.ndarray:
     """Warm-tone aging: paper base shifts toward sepia/cream."""
@@ -345,7 +345,7 @@ def tape_residue(img: np.ndarray, intensity: float) -> np.ndarray:
     return _clip(out)
 
 
-# ── Chemical ──────────────────────────────────────────────────────────────────
+# Chemical
 
 def ink_fading(img: np.ndarray, intensity: float) -> np.ndarray:
     """Dark pigment degrades toward medium gray."""
@@ -459,7 +459,7 @@ def toner_flaking(img: np.ndarray, intensity: float) -> np.ndarray:
     return _clip(out)
 
 
-# ── Biological ────────────────────────────────────────────────────────────────
+# Biological
 
 def mold(img: np.ndarray, intensity: float) -> np.ndarray:
     """Greenish-gray irregular mold colonies."""
@@ -561,7 +561,7 @@ def insect_damage(img: np.ndarray, intensity: float) -> np.ndarray:
     return out
 
 
-# ── Scanning ──────────────────────────────────────────────────────────────────
+# Scanning
 
 def noise(img: np.ndarray, intensity: float) -> np.ndarray:
     """Gaussian sensor / grain noise."""
@@ -737,7 +737,7 @@ def pixelation(img: np.ndarray, intensity: float) -> np.ndarray:
     return np.array(big)
 
 
-# ── Aged (composite age simulation) ──────────────────────────────────────────
+# Aged (composite age simulation)
 
 def aged_sepia(img: np.ndarray, intensity: float) -> np.ndarray:
     """Classic sepia-tone conversion — warm reddish-brown monochrome.
@@ -876,7 +876,7 @@ def aged_brittle(img: np.ndarray, intensity: float) -> np.ndarray:
     return out
 
 
-# ── Physical extras ───────────────────────────────────────────────────────────
+# Physical extras
 
 def wrinkle(img: np.ndarray, intensity: float) -> np.ndarray:
     """Smooth low-frequency brightness variation from paper deformation."""
@@ -981,7 +981,7 @@ def ink_loss(img: np.ndarray, intensity: float) -> np.ndarray:
     return _clip(out)
 
 
-# ── Physical – Structural damage ─────────────────────────────────────────────
+# Physical – Structural damage
 
 def tear(img: np.ndarray, intensity: float) -> np.ndarray:
     """Paper tear along one edge with realistic paper texture background.
@@ -1011,7 +1011,7 @@ def tear(img: np.ndarray, intensity: float) -> np.ndarray:
     if max_depth < 2:
         return img
 
-    # ── Organic tear profile via FBM ─────────────────────────────────────────
+    # Organic tear profile via FBM
     raw    = _fbm_1d(n, octaves=5, roughness=0.62, rng=rng)
     raw    = (raw - raw.min()) / max(raw.max() - raw.min(), 1e-6)
     depths = (raw * max_depth).astype(int)
@@ -1032,11 +1032,11 @@ def tear(img: np.ndarray, intensity: float) -> np.ndarray:
         d_map = depths[:, np.newaxis]
         torn  = col_idx >= (W - d_map)
 
-    # ── Paper texture in the exposed region ───────────────────────────────────
+    # Paper texture in the exposed region
     paper = _paper_texture(H, W, rng).astype(np.float32)
     out   = np.where(torn[..., np.newaxis], paper, out)
 
-    # ── Drop-shadow on remaining paper near the tear boundary ─────────────────
+    # Drop-shadow on remaining paper near the tear boundary
     torn_pil  = Image.fromarray((torn.astype(np.uint8) * 255))
     shadow_r  = max(2.0, max_depth * 0.18)
     shadow_map = (
@@ -1047,7 +1047,7 @@ def tear(img: np.ndarray, intensity: float) -> np.ndarray:
     shadow_map *= 1.0 - torn.astype(np.float32)
     out = out * (1.0 - shadow_map[..., np.newaxis] * 0.40 * t)
 
-    # ── Fibrous fringe noise at the tear boundary ─────────────────────────────
+    # Fibrous fringe noise at the tear boundary
     fringe_px = max(2, max_depth // 7)
     if edge == 0:
         fringe = (row_idx >= d_map) & (row_idx < d_map + fringe_px)
@@ -1110,7 +1110,7 @@ def paper_fold(img: np.ndarray, intensity: float) -> np.ndarray:
         fbm_tex   = np.abs(_fbm_1d(H, octaves=4, roughness=0.60, rng=rng)) * 0.04 * t
         fbm_2d    = fbm_tex[:, np.newaxis]                      # (H, 1)
 
-    # ── Profile components (all (H, W) arrays) ────────────────────────────────
+    # Profile components (all (H, W) arrays)
 
     # Wide shadow: concave side only (dist < 0)
     shadow   = np.exp(-(np.maximum(-dist, 0) ** 2) / (2 * (shadow_w * 0.70) ** 2))
@@ -1140,7 +1140,7 @@ def paper_fold(img: np.ndarray, intensity: float) -> np.ndarray:
     return _clip(img.astype(np.float32) * factor[..., np.newaxis])
 
 
-# ── Reproduction ──────────────────────────────────────────────────────────────
+# Reproduction
 
 def photocopy(img: np.ndarray, intensity: float) -> np.ndarray:
     """Photocopy effect: contrast boost, coarse grain, edge accentuation."""
@@ -1184,7 +1184,7 @@ def fax_lines(img: np.ndarray, intensity: float) -> np.ndarray:
     return _clip(out)
 
 
-# ── Registry + apply_effects ──────────────────────────────────────────────────
+# Registry + apply_effects
 
 EFFECTS: dict[str, callable] = {
     # Physical

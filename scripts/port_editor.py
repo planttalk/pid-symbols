@@ -91,7 +91,7 @@ def _overlay_svg(svg_text: str, snap_points: list[dict]) -> str:
     return svg_text[:close_idx] + "\n" + overlay + "\n" + svg_text[close_idx:]
 
 
-# ── HTTP handler ──────────────────────────────────────────────────────────────
+# HTTP handler
 
 class EditorHandler(BaseHTTPRequestHandler):
     processed_dir: Path  # set on the class before starting
@@ -137,7 +137,7 @@ class EditorHandler(BaseHTTPRequestHandler):
         else:
             self._error(404, "not found")
 
-    # ── API methods ───────────────────────────────────────────────────────────
+    # API methods
 
     def _api_symbols(self):
         reg_path = self.processed_dir / "registry.json"
@@ -223,7 +223,7 @@ class EditorHandler(BaseHTTPRequestHandler):
         self._json({"ok": True, "saved": len(pts)})
 
 
-# ── Embedded UI ───────────────────────────────────────────────────────────────
+# Embedded UI
 
 _HTML = r"""<!DOCTYPE html>
 <html lang="en">
@@ -794,7 +794,7 @@ function xe(s) {
 </html>"""
 
 
-# ── Entry point ───────────────────────────────────────────────────────────────
+# Entry point
 
 def main() -> None:
     parser = argparse.ArgumentParser(

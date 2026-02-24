@@ -1,6 +1,6 @@
 services:
 
-  # ── Symbol Studio ─────────────────────────────────────────────────────────
+  # Symbol Studio
   # Browser-based port editor + augmentation viewer.
   # Access at http://localhost:${PORT} (default 43070).
   studio:
@@ -16,7 +16,7 @@ services:
       NO_BROWSER: "1"
     restart: unless-stopped
 
-  # ── Collaborative Review API ──────────────────────────────────────────────
+  # Collaborative Review API
   # FastAPI service for multi-user port review workflow.
   # Access at http://localhost:${API_PORT} (default 8000).
   #

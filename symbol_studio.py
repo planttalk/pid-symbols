@@ -25,14 +25,14 @@ import threading
 import urllib.parse
 import webbrowser
 
-# ── globals set in main() ─────────────────────────────────────────────────────
+# globals set in main()
 SYMBOLS_ROOT: pathlib.Path
 SERVER_PORT: int
 _EDITOR_ROOT = pathlib.Path(__file__).parent / "editor"
 # Serve from editor/dist/ (React build) when available, otherwise editor/ (legacy)
 EDITOR_DIR = _EDITOR_ROOT / "dist" if (_EDITOR_ROOT / "dist").is_dir() else _EDITOR_ROOT
 
-# ── port colour map (shared by _generate_debug) ───────────────────────────────
+# port colour map (shared by _generate_debug)
 _PORT_COLORS: dict[str, str] = {
     "in":        "#2196F3",
     "out":       "#F44336",
@@ -56,14 +56,14 @@ def _port_color(pid: str) -> str:
     return _PORT_COLORS.get(pid.lower(), _DEFAULT_COLOR)
 
 
-# ── HTTP handler ───────────────────────────────────────────────────────────────
+# HTTP handler
 
 class Handler(http.server.BaseHTTPRequestHandler):
 
     def log_message(self, *_):
         pass  # silence request logging
 
-    # ── low-level send helpers ─────────────────────────────────────────────────
+    # low-level send helpers
 
     def _sse_stream(self, gen) -> None:
         """Send an SSE response, pushing each dict yielded by *gen* as an event."""
@@ -108,7 +108,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
         except OSError:
             self._error(f"File not found: {path.name}", 404)
 
-    # ── GET ────────────────────────────────────────────────────────────────────
+    # GET
 
     def do_GET(self) -> None:
         parsed = urllib.parse.urlparse(self.path)
@@ -160,7 +160,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
         else:
             self._error("Not found", 404)
 
-    # ── POST ───────────────────────────────────────────────────────────────────
+    # POST
 
     def do_POST(self) -> None:
         body = self._read_body()
@@ -214,7 +214,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self._error("Not found", 404)
 
 
-# ── business logic ─────────────────────────────────────────────────────────────
+# business logic
 
 def _safe_path(rel: str) -> pathlib.Path | None:
     """Resolve a relative symbol path safely (prevent path traversal)."""
@@ -798,7 +798,7 @@ def _augment_batch(body: dict):
     out_dir = pathlib.Path(out_str)
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    # ── YOLO setup ────────────────────────────────────────────────────────────
+    # YOLO setup
     if fmt == "yolo":
         # Extract category from the 2nd-to-last path segment (works for 3- and 4-part IDs)
         all_cats = sorted({
@@ -961,7 +961,7 @@ def _augment_combo(body: dict) -> tuple[dict | None, str]:
         return None, str(exc)
 
 
-# ── entry point ────────────────────────────────────────────────────────────────
+# entry point
 
 def main(argv: list[str] | None = None) -> None:
     global SYMBOLS_ROOT, SERVER_PORT

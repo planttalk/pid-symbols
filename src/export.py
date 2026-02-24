@@ -382,7 +382,7 @@ def migrate_legacy_completed(processed_dir: Path, dry_run: bool) -> None:
         print(f"Error: processed directory not found: {processed_dir}")
         return
 
-    # ── Step 1: build lookup maps from all 4-part JSONs ───────────────────
+    # Step 1: build lookup maps from all 4-part JSONs
     print("Building new-structure index…")
     hash_to_new:   dict[str, Path] = {}   # content_hash → json path
     srckey_to_new: dict[str, Path] = {}   # "source_path|orig_filename" → json path
@@ -414,7 +414,7 @@ def migrate_legacy_completed(processed_dir: Path, dry_run: bool) -> None:
     print(f"  Indexed {len(hash_to_new)} new-structure symbols by hash, "
           f"{len(srckey_to_new)} by source key.\n")
 
-    # ── Step 2: find completed old-structure JSONs ─────────────────────────
+    # Step 2: find completed old-structure JSONs
     legacy: list[tuple[Path, dict]] = []
 
     for json_path in sorted(processed_dir.rglob("*.json")):
@@ -438,7 +438,7 @@ def migrate_legacy_completed(processed_dir: Path, dry_run: bool) -> None:
         print("Nothing to migrate.")
         return
 
-    # ── Step 3: match and merge ────────────────────────────────────────────
+    # Step 3: match and merge
     merged   = 0
     skipped  = 0
     no_match = 0
