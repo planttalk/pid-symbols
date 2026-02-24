@@ -90,6 +90,7 @@ function EffectGroup({ group, augEffects, onChange, onToggle }) {
 
 // Lightbox modal
 function Lightbox({ images, idx, onClose, onGoto, flagged, onFlag }) {
+  console.log('Lightbox rendered with idx:', idx, 'flagged:', flagged, 'onFlag:', typeof onFlag);
   const img = images[idx];
 
   useEffect(() => {
@@ -169,21 +170,24 @@ function Lightbox({ images, idx, onClose, onGoto, flagged, onFlag }) {
 
           {/* Flag as unrealistic button */}
           {onFlag && (
-            <Button
-              size="small"
-              startIcon={<FlagIcon sx={{ fontSize: 13 }} />}
-              onClick={e => { e.stopPropagation(); onFlag(idx); }}
-              sx={{
-                mt: 1,
+            <button
+              type="button"
+              onClick={e => { e.stopPropagation(); console.log('Button clicked'); onFlag(idx); }}
+              style={{
+                marginTop: 8,
                 fontSize: 10,
-                borderRadius: '6px',
-                ...(flagged?.has(idx)
-                  ? { borderColor: '#ef4444', color: '#ef4444', bgcolor: 'rgba(239,68,68,0.12)', border: '1px solid' }
-                  : { borderColor: 'rgba(255,255,255,0.2)', color: 'rgba(255,255,255,0.45)', border: '1px solid' }),
+                borderRadius: 6,
+                zIndex: 10,
+                pointerEvents: 'auto',
+                cursor: 'pointer',
+                background: flagged?.has(idx) ? 'rgba(239,68,68,0.12)' : 'transparent',
+                color: flagged?.has(idx) ? '#ef4444' : 'rgba(255,255,255,0.45)',
+                border: flagged?.has(idx) ? '1px solid #ef4444' : '1px solid rgba(255,255,255,0.2)',
+                padding: '4px 8px',
               }}
             >
               {flagged?.has(idx) ? 'Flagged as unrealistic' : 'Flag as unrealistic'}
-            </Button>
+            </button>
           )}
 
           {/* Applied effects chips */}
@@ -221,9 +225,10 @@ function SmartGrid({ images, label, onClear, currentPath, source, onFlagged }) {
   useEffect(() => { setPage(0); setLightboxIdx(null); setFlagged(new Set()); }, [images]);
 
   const handleFlag = useCallback(async (absIdx) => {
+    console.log('handleFlag called with', absIdx, 'flagged currently has', flagged);
     const img = images[absIdx];
-    if (!img?.effects) return;
     if (flagged.has(absIdx)) {
+      console.log('Already flagged, removing');
       setFlagged(prev => { const s = new Set(prev); s.delete(absIdx); return s; });
       return;
     }
@@ -233,10 +238,11 @@ function SmartGrid({ images, label, onClear, currentPath, source, onFlagged }) {
         body: JSON.stringify({
           symbol:  currentPath || '',
           label:   img.label || `#${absIdx + 1}`,
-          effects: img.effects,
+          effects: img.effects || {},
           source:  source || 'preview',
         }),
       });
+      console.log('API response:', res.status);
       if (!res.ok) throw new Error(await res.text());
       setFlagged(prev => new Set([...prev, absIdx]));
       onFlagged?.();
@@ -619,6 +625,7 @@ export default function AugmentTab() {
     setImages([]);
     try {
       const { augEffects: effects } = useEditorStore.getState();
+      const fallbackEffects = { ...effects };
       const res = await fetch('/api/augment-preview', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         signal: abort.signal,
@@ -635,7 +642,7 @@ export default function AugmentTab() {
       const imgs = (data.images || []).map((item, i) => ({
         src:     typeof item === 'string' ? item : item.src,
         label:   `#${i + 1}`,
-        effects: typeof item === 'string' ? null : (item.effects || null),
+        effects: typeof item === 'string' ? fallbackEffects : (item.effects || fallbackEffects),
       }));
       setImages(imgs);
       setImagesLabel('Preview (unsaved)');
@@ -724,6 +731,7 @@ export default function AugmentTab() {
     setImages([]);
     try {
       const { augEffects: effects } = useEditorStore.getState();
+      const fallbackEffects = { ...effects };
       const res = await fetch('/api/augment-generate', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         signal: abort.signal,
@@ -742,7 +750,7 @@ export default function AugmentTab() {
       const imgs = (data.images || []).map((item, i) => ({
         src:     typeof item === 'string' ? item : item.src,
         label:   `#${i + 1}`,
-        effects: typeof item === 'string' ? null : (item.effects || null),
+        effects: typeof item === 'string' ? fallbackEffects : (item.effects || fallbackEffects),
       }));
       setImages(imgs);
       setAugImages(imgs);
