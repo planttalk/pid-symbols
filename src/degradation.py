@@ -622,6 +622,103 @@ def pixelation(img: np.ndarray, intensity: float) -> np.ndarray:
 
 # ── Aged (composite age simulation) ──────────────────────────────────────────
 
+def aged_sepia(img: np.ndarray, intensity: float) -> np.ndarray:
+    """Classic sepia-tone conversion — warm reddish-brown monochrome.
+
+    Simulates old photographs, blueprints printed on sepia paper, or any
+    document that has turned fully sepia over decades.
+    """
+    out  = img.astype(np.float32)
+    gray = out.mean(axis=2, keepdims=True)          # luminance proxy
+    # Standard sepia coefficients blended with original by intensity
+    sep_r = np.clip(gray * 1.08 + 38 * intensity, 0, 255)
+    sep_g = np.clip(gray * 0.95 + 16 * intensity, 0, 255)
+    sep_b = np.clip(gray * 0.76 -  8 * intensity, 0, 255)
+    sepia = np.concatenate([sep_r, sep_g, sep_b], axis=2)
+    return _clip(out * (1 - intensity) + sepia * intensity)
+
+
+def aged_yellowed(img: np.ndarray, intensity: float) -> np.ndarray:
+    """Very heavy yellowing / browning — closer to tan/ochre than cream.
+
+    Represents documents stored in poor conditions for several decades:
+    strong colour shift + notable ink loss.
+    """
+    out = img.astype(np.float32)
+    # Strong warm channel shifts
+    out[..., 0] = np.clip(out[..., 0] * (1 + 0.12 * intensity) + 45 * intensity, 0, 255)
+    out[..., 1] = np.clip(out[..., 1] * (1 + 0.04 * intensity) + 22 * intensity, 0, 255)
+    out[..., 2] = np.clip(out[..., 2] * (1 - 0.35 * intensity), 0, 255)
+    # Ink fading
+    out = ink_fading(out.astype(np.uint8), intensity * 0.6).astype(np.float32)
+    # Foxing spots on the aged paper
+    out = foxing(out.astype(np.uint8), intensity * 0.4).astype(np.float32)
+    return _clip(out)
+
+
+def aged_stained(img: np.ndarray, intensity: float) -> np.ndarray:
+    """Mixed liquid damage: water tidemarks, coffee rings, oil patches.
+
+    Combines multiple stain types at randomised positions for a realistic
+    heavily-used document appearance.
+    """
+    out = img
+    out = water_stain(out, intensity * 0.8)
+    out = coffee_stain(out, intensity * 0.6)
+    out = oil_stain(out,    intensity * 0.4)
+    out = yellowing(out,    intensity * 0.5)
+    return out
+
+
+def aged_crumpled(img: np.ndarray, intensity: float) -> np.ndarray:
+    """Paper that has been crumpled and smoothed out: heavy creases + wrinkles.
+
+    Creates an irregular texture of brightness variation and fold lines,
+    typical of documents that were screwed up and then flattened.
+    """
+    out = img
+    out = wrinkle(out, intensity * 0.9)
+    out = crease(out,  intensity * 0.9)
+    out = edge_wear(out, intensity * 0.5)
+    return out
+
+
+def aged_archive(img: np.ndarray, intensity: float) -> np.ndarray:
+    """Long-term archival degradation: foxing, biological growth, fading.
+
+    Mimics documents kept in damp archives for 50+ years — spotted,
+    biologically degraded, and faded but still legible at low intensity.
+    """
+    out = img
+    out = yellowing(out,   intensity * 0.7)
+    out = foxing(out,      intensity * 0.7)
+    out = mildew(out,      intensity * 0.5)
+    out = bio_foxing(out,  intensity * 0.4)
+    out = ink_fading(out,  intensity * 0.5)
+    out = noise(out,       intensity * 0.15)
+    return out
+
+
+def aged_newspaper(img: np.ndarray, intensity: float) -> np.ndarray:
+    """Old newsprint: extreme yellowing/browning, coarse paper texture, ink spread.
+
+    Newsprint has a distinctive golden-brown aged look with slightly fuzzy
+    ink due to the porous paper.
+    """
+    out = img.astype(np.float32)
+    # Strong warm shifts toward golden/brown (newsprint colour)
+    out[..., 0] = np.clip(out[..., 0] * (1 + 0.18 * intensity) + 50 * intensity, 0, 255)
+    out[..., 1] = np.clip(out[..., 1] * (1 + 0.08 * intensity) + 25 * intensity, 0, 255)
+    out[..., 2] = np.clip(out[..., 2] * (1 - 0.40 * intensity),  0, 255)
+    out = _clip(out)
+    # Ink bleed into porous paper
+    out = ink_bleed(out, intensity * 0.4)
+    # Coarse noise (rough paper grain)
+    rng   = _rng()
+    grain = rng.normal(0, intensity * 12, img.shape).astype(np.float32)
+    return _clip(out.astype(np.float32) + grain)
+
+
 def aged_light(img: np.ndarray, intensity: float) -> np.ndarray:
     """Light document ageing: subtle yellowing + soft noise + mild fading.
 
@@ -787,7 +884,13 @@ EFFECTS: dict[str, callable] = {
     "mildew":            mildew,
     "bio_foxing":        bio_foxing,
     "insect_damage":     insect_damage,
-    # Aged (composite presets)
+    # Aged (composite presets — ordered from lightest to most extreme)
+    "aged_sepia":        aged_sepia,
+    "aged_yellowed":     aged_yellowed,
+    "aged_newspaper":    aged_newspaper,
+    "aged_stained":      aged_stained,
+    "aged_crumpled":     aged_crumpled,
+    "aged_archive":      aged_archive,
     "aged_light":        aged_light,
     "aged_heavy":        aged_heavy,
     "aged_brittle":      aged_brittle,
@@ -825,6 +928,8 @@ _APPLY_ORDER: list[str] = [
     "ink_fading", "ink_bleed", "coffee_stain", "oil_stain", "acid_spots",
     "bleaching", "toner_flaking",
     # Aged composite presets (applied after physical/chemical, before scanning artefacts)
+    "aged_sepia", "aged_yellowed", "aged_newspaper",
+    "aged_stained", "aged_crumpled", "aged_archive",
     "aged_light", "aged_heavy", "aged_brittle",
     # Scanning
     "noise", "salt_pepper", "vignette", "jpeg_artifacts", "skew",

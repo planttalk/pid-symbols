@@ -113,22 +113,54 @@ export default function CanvasEditor() {
   const svgH = viewBox.h * zoom;
 
   // ── Zoom via wheel ─────────────────────────────────────────────────────────
-  // Use functional updater so we never capture stale `zoom` in the closure —
-  // this means the listener is registered exactly once (not on every zoom change).
   useEffect(() => {
     const el = wrapRef.current;
     if (!el) return;
     const onWheel = (e) => {
       e.preventDefault();
       const factor = e.deltaY < 0 ? 1.15 : 1 / 1.15;
-      // Use getState() to read current zoom — avoids capturing stale closure
-      // AND avoids passing a function to setZoom (which is not a Zustand set, so
-      // it would receive the function as its argument and produce NaN).
       setZoom(useEditorStore.getState().zoom * factor);
     };
     el.addEventListener('wheel', onWheel, { passive: false });
     return () => el.removeEventListener('wheel', onWheel);
-  }, [setZoom]); // no 'zoom' dep — listener never needs to re-register
+  }, [setZoom]);
+
+  // ── Add port on double-click (native listener — more reliable than React
+  //    synthetic onDblClick, especially with touchpads).
+  //    Also catches click(detail===2) as a fallback for some trackpad drivers.
+  // ────────────────────────────────────────────────────────────────────────────
+  useEffect(() => {
+    const el = svgRef.current;
+    if (!el) return;
+
+    const doAddPort = (clientX, clientY) => {
+      const { currentPath, midState, portType, addPort, selectPort, snapVal }
+        = useEditorStore.getState();
+      if (!currentPath || midState) return;
+      // Guard: getScreenCTM can return null for off-screen elements
+      if (!el.getScreenCTM()) return;
+      const pt = toSvgCoords(el, clientX, clientY);
+      if (!isFinite(pt.x) || !isFinite(pt.y)) return;
+      const x = +snapVal(pt.x).toFixed(2);
+      const y = +snapVal(pt.y).toFixed(2);
+      addPort({ id: `port-${Date.now()}`, type: portType, x, y, zone: null, locked: false });
+      selectPort(useEditorStore.getState().ports.length - 1, false);
+    };
+
+    const onDblClick = (e) => doAddPort(e.clientX, e.clientY);
+
+    // Some touchpad drivers fire click(detail=2) without a dblclick event.
+    const onClick = (e) => {
+      if (e.detail === 2) doAddPort(e.clientX, e.clientY);
+    };
+
+    el.addEventListener('dblclick', onDblClick);
+    el.addEventListener('click',    onClick);
+    return () => {
+      el.removeEventListener('dblclick', onDblClick);
+      el.removeEventListener('click',    onClick);
+    };
+  }, []); // registered once — all state read via getState()
 
   // ── Global mousemove / mouseup (for drag) ──────────────────────────────────
   useEffect(() => {
@@ -242,22 +274,10 @@ export default function CanvasEditor() {
     }));
   }, []);
 
-  // ── SVG background double-click (add port) ─────────────────────────────────
-  const handleSvgDblClick = useCallback((e) => {
-    if (!currentPath) return;
-    if (midState) return;
-    const pt = toSvgCoords(svgRef.current, e.clientX, e.clientY);
-    const x  = +snapVal(pt.x).toFixed(2);
-    const y  = +snapVal(pt.y).toFixed(2);
-    const pt2 = { id: `port-${Date.now()}`, type: portType, x, y, zone: null, locked: false };
-    addPort(pt2);
-    // addPort is synchronous in Zustand; new port is at (length - 1)
-    selectPort(useEditorStore.getState().ports.length - 1, false);
-  }, [currentPath, midState, portType, snapVal, addPort, selectPort]);
-
   // ── SVG background click (deselect / confirm midpoint) ────────────────────
+  // Note: port addition on double-click is handled by the native listener above.
   const handleSvgClick = useCallback((e) => {
-    if (e.detail > 1) return; // handled by dblclick
+    if (e.detail > 1) return; // native listener handles double-click
     if (midState?.step === 3) {
       const { midX, midY } = midState;
       addPort({ id: `port-${Date.now()}`, type: portType, x: +snapVal(midX).toFixed(2), y: +snapVal(midY).toFixed(2), zone: null, locked: false });
@@ -334,7 +354,6 @@ export default function CanvasEditor() {
           height={svgH}
           viewBox={`${viewBox.x} ${viewBox.y} ${viewBox.w} ${viewBox.h}`}
           style={{ display: 'block', cursor: 'crosshair', userSelect: 'none' }}
-          onDblClick={handleSvgDblClick}
           onClick={handleSvgClick}
         >
           {/* White background */}

@@ -23,9 +23,15 @@ export const EFFECT_GROUPS = [
   {
     label: 'Aged',
     effects: [
-      { name: 'aged_light',   label: 'Aged – Light'   },
-      { name: 'aged_heavy',   label: 'Aged – Heavy'   },
-      { name: 'aged_brittle', label: 'Aged – Brittle' },
+      { name: 'aged_sepia',     label: 'Sepia'          },
+      { name: 'aged_yellowed',  label: 'Yellowed'       },
+      { name: 'aged_newspaper', label: 'Newspaper'      },
+      { name: 'aged_stained',   label: 'Stained'        },
+      { name: 'aged_crumpled',  label: 'Crumpled'       },
+      { name: 'aged_archive',   label: 'Archive'        },
+      { name: 'aged_light',     label: 'Aged – Light'   },
+      { name: 'aged_heavy',     label: 'Aged – Heavy'   },
+      { name: 'aged_brittle',   label: 'Aged – Brittle' },
     ],
   },
   {
