@@ -879,7 +879,7 @@ def aged_brittle(img: np.ndarray, intensity: float) -> np.ndarray:
 # Physical extras
 
 def wrinkle(img: np.ndarray, intensity: float) -> np.ndarray:
-    """Realistic paper wrinkles: oriented creases with shadow and highlight bands."""
+    """Aggressive paper wrinkles: deep creases, paper buckling, micro-crinkle, warm tint."""
     rng  = _rng()
     H, W = img.shape[:2]
     t    = intensity
@@ -890,52 +890,68 @@ def wrinkle(img: np.ndarray, intensity: float) -> np.ndarray:
 
     factor = np.ones((H, W), dtype=np.float32)
 
-    n_creases = rng.integers(2, max(3, int(6 * t) + 2))
+    # Main crease lines — count and strength scale with intensity
+    n_creases = rng.integers(3, max(5, int(9 * t) + 3))
     for _ in range(n_creases):
-        # Random crease angle and anchor point
-        angle      = rng.uniform(0, np.pi)
-        cx         = rng.uniform(0.15, 0.85) * W
-        cy         = rng.uniform(0.15, 0.85) * H
+        angle        = rng.uniform(0, np.pi)
+        cx           = rng.uniform(0.08, 0.92) * W
+        cy           = rng.uniform(0.08, 0.92) * H
         cos_a, sin_a = float(np.cos(angle)), float(np.sin(angle))
 
-        # Signed perpendicular distance from the crease line
         dist = (XX - cx) * sin_a - (YY - cy) * cos_a
 
-        # FBM waviness: sample per-pixel using coordinate along the crease
-        along      = (XX - cx) * cos_a + (YY - cy) * sin_a
-        fbm        = _fbm_1d(max(H, W) + 2, octaves=4, roughness=0.62, rng=rng)
-        idx_raw    = (along / max(H, W) + 0.5) * (len(fbm) - 1)
-        idx_clipped = np.clip(idx_raw, 0, len(fbm) - 2).astype(np.int32)
-        frac       = idx_raw - idx_clipped
-        fbm_val    = fbm[idx_clipped] * (1 - frac) + fbm[idx_clipped + 1] * frac
-        dist       = dist - fbm_val * (min(H, W) * 0.035 * t)
+        # FBM waviness along crease (rougher than before)
+        along       = (XX - cx) * cos_a + (YY - cy) * sin_a
+        fbm         = _fbm_1d(max(H, W) + 2, octaves=5, roughness=0.70, rng=rng)
+        idx_raw     = (along / max(H, W) + 0.5) * (len(fbm) - 1)
+        idx_clip    = np.clip(idx_raw, 0, len(fbm) - 2).astype(np.int32)
+        frac        = idx_raw - idx_clip
+        fbm_val     = fbm[idx_clip] * (1 - frac) + fbm[idx_clip + 1] * frac
+        dist        = dist - fbm_val * (min(H, W) * 0.06 * t)
 
-        # Crease geometry: shadow (concave side), highlight (at ridge), lift (convex side)
-        crease_w     = max(1.0, min(H, W) * 0.012)
-        sigma_shadow = crease_w * 5.0
-        sigma_hi     = crease_w * 1.2
-        sigma_lift   = crease_w * 3.5
+        # Variable width: mix of razor-thin folds and broad compression bands
+        crease_w     = max(1.0, min(H, W) * float(rng.uniform(0.006, 0.030)))
+        sigma_shadow = crease_w * float(rng.uniform(4.5, 8.0))
+        sigma_hi     = crease_w * float(rng.uniform(0.7, 1.4))
+        sigma_lift   = crease_w * float(rng.uniform(2.5, 5.5))
+        strength     = float(rng.uniform(0.65, 1.0))
 
         shadow    = np.exp(-(np.maximum(-dist, 0) ** 2) / (2 * sigma_shadow ** 2))
-        highlight = np.exp(-(dist ** 2)               / (2 * sigma_hi ** 2))
+        highlight = np.exp(-(dist ** 2)                / (2 * sigma_hi ** 2))
         lift      = np.exp(-(np.maximum(dist, 0) ** 2) / (2 * sigma_lift ** 2))
 
-        factor -= shadow    * 0.32 * t
-        factor += highlight * 0.18 * t
-        factor += lift      * 0.07 * t
+        factor -= shadow    * 0.52 * t * strength
+        factor += highlight * 0.24 * t * strength
+        factor += lift      * 0.10 * t * strength
 
-    # Large-scale paper-deformation brightness variation underneath
-    scale_bg = max(4, min(H, W) // 10)
-    small_h  = max(2, H // scale_bg)
-    small_w  = max(2, W // scale_bg)
-    bg_noise = rng.random((small_h, small_w)).astype(np.float32)
-    bg_map   = np.array(
-        Image.fromarray((bg_noise * 255).astype(np.uint8)).resize((W, H), Image.BILINEAR)
+    # Paper buckling: medium-frequency undulation (surface not lying flat)
+    buck_scale = max(3, min(H, W) // 7)
+    bh = max(2, H // buck_scale)
+    bw = max(2, W // buck_scale)
+    buck_noise = rng.random((bh, bw)).astype(np.float32)
+    buck_map   = np.array(
+        Image.fromarray((buck_noise * 255).astype(np.uint8)).resize((W, H), Image.BILINEAR)
     ).astype(np.float32) / 255.0
-    factor  *= 1.0 + (bg_map - 0.5) * t * 0.12
+    factor *= 1.0 + (buck_map - 0.5) * t * 0.26
 
-    factor = factor.clip(0.50, 1.22)
-    return _clip(img.astype(np.float32) * factor[..., None])
+    # Micro-crinkle: fine surface roughness on top of main creases
+    fine_scale = max(2, min(H, W) // 28)
+    fh = max(2, H // fine_scale)
+    fw = max(2, W // fine_scale)
+    fine_noise = rng.random((fh, fw)).astype(np.float32)
+    fine_map   = np.array(
+        Image.fromarray((fine_noise * 255).astype(np.uint8)).resize((W, H), Image.BILINEAR)
+    ).astype(np.float32) / 255.0
+    factor *= 1.0 + (fine_map - 0.5) * t * 0.09
+
+    factor = factor.clip(0.28, 1.30)
+
+    # Apply brightness, then add subtle warm tint at deep shadow zones
+    out = img.astype(np.float32) * factor[..., None]
+    shadow_depth = np.clip(1.0 - factor, 0.0, 1.0)
+    out[..., 0] = np.clip(out[..., 0] + shadow_depth * 10 * t, 0, 255)  # warm red
+    out[..., 2] = np.clip(out[..., 2] - shadow_depth *  7 * t, 0, 255)  # reduce blue
+    return _clip(out)
 
 
 def pencil_marks(img: np.ndarray, intensity: float) -> np.ndarray:

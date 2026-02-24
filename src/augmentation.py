@@ -29,10 +29,12 @@ def _build_augment_transform():
     import albumentations as A
 
     return A.Compose([
-        A.HorizontalFlip(p=0.5),
-        A.VerticalFlip(p=0.5),
-        A.RandomRotate90(p=0.5),
-        A.ShiftScaleRotate(shift_limit=0.10, scale_limit=0.15, rotate_limit=45, p=0.7),
+        A.HorizontalFlip(p=0.7),          # mirror
+        A.VerticalFlip(p=0.7),            # upside down
+        A.Transpose(p=0.5),               # diagonal mirror
+        A.RandomRotate90(p=0.8),          # exact 90 / 180 / 270°
+        A.Rotate(limit=180, p=0.8, border_mode=0, fill=255),  # full free rotation
+        A.ShiftScaleRotate(shift_limit=0.10, scale_limit=0.15, rotate_limit=0, p=0.5),
         A.Perspective(scale=(0.05, 0.15), p=0.4),
         A.ElasticTransform(alpha=30, sigma=6, p=0.3),
         A.GridDistortion(num_steps=5, distort_limit=0.3, p=0.3),
@@ -47,10 +49,12 @@ def _build_augment_transform_yolo():
 
     return A.Compose(
         [
-            A.HorizontalFlip(p=0.5),
-            A.VerticalFlip(p=0.5),
-            A.RandomRotate90(p=0.5),
-            A.ShiftScaleRotate(shift_limit=0.10, scale_limit=0.15, rotate_limit=45, p=0.7),
+            A.HorizontalFlip(p=0.7),
+            A.VerticalFlip(p=0.7),
+            A.Transpose(p=0.5),
+            A.RandomRotate90(p=0.8),
+            A.Rotate(limit=180, p=0.8, border_mode=0, fill=255),
+            A.ShiftScaleRotate(shift_limit=0.10, scale_limit=0.15, rotate_limit=0, p=0.5),
             A.Perspective(scale=(0.05, 0.15), p=0.4),
             A.ElasticTransform(alpha=30, sigma=6, p=0.3),
             A.GridDistortion(num_steps=5, distort_limit=0.3, p=0.3),
