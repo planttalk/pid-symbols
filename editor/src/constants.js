@@ -45,6 +45,7 @@ export const EFFECT_GROUPS = [
       { name: 'edge_wear',      label: 'Edge Wear'      },
       { name: 'fingerprint',    label: 'Fingerprint'    },
       { name: 'pencil_marks',   label: 'Pencil Marks'   },
+      { name: 'ink_loss',       label: 'Ink Loss'       },
       { name: 'tear',           label: 'Tear'           },
       { name: 'paper_fold',     label: 'Fold'           },
       { name: 'binding_shadow', label: 'Binding Shadow' },

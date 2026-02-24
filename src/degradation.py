@@ -107,7 +107,14 @@ def yellowing(img: np.ndarray, intensity: float) -> np.ndarray:
 
 
 def foxing(img: np.ndarray, intensity: float) -> np.ndarray:
-    """Scattered reddish-brown oxidation spots (metallic impurities in paper)."""
+    """Scattered oxidation spots: irregular ellipses with two-tone tidemark rings.
+
+    Improvements over a plain circle:
+    • Random elliptical aspect ratio (0.5–2×) for varied spot shapes
+    • Angular harmonic noise deforms the boundary for organic, non-circular edges
+    • Two-tone colouring: warm reddish-brown fill + darker, more saturated ring
+      at the spot boundary (the visible tidemark of the oxidation process)
+    """
     rng = _rng()
     H, W = img.shape[:2]
     out  = img.astype(np.float32)
@@ -116,20 +123,46 @@ def foxing(img: np.ndarray, intensity: float) -> np.ndarray:
     for _ in range(n):
         cx = int(rng.integers(0, W))
         cy = int(rng.integers(0, H))
-        r  = int(rng.integers(2, max(3, int(min(H, W) * 0.04 * intensity) + 3)))
+        r_base = int(rng.integers(2, max(3, int(min(H, W) * 0.045 * intensity) + 3)))
+        rx = max(1, r_base)
+        ry = max(1, int(r_base * rng.uniform(0.5, 2.0)))
 
-        y0, y1 = max(0, cy - r * 2), min(H, cy + r * 2)
-        x0, x1 = max(0, cx - r * 2), min(W, cx + r * 2)
+        pad = max(rx, ry) * 2 + 2
+        y0, y1 = max(0, cy - pad), min(H, cy + pad)
+        x0, x1 = max(0, cx - pad), min(W, cx + pad)
         if y0 >= y1 or x0 >= x1:
             continue
 
         yy, xx = np.ogrid[y0:y1, x0:x1]
-        dist  = np.sqrt(((xx - cx) / max(r, 1))**2 + ((yy - cy) / max(r * 1.3, 1))**2)
-        blend = np.maximum(0.0, 1.0 - dist) * float(rng.uniform(0.3, 0.8)) * intensity
+        base_dist = np.sqrt(((xx - cx) / rx) ** 2 + ((yy - cy) / ry) ** 2)
 
-        sr, sg, sb = float(rng.uniform(100, 180)), float(rng.uniform(60, 110)), float(rng.uniform(20, 60))
-        for c, v in enumerate([sr, sg, sb]):
-            out[y0:y1, x0:x1, c] = out[y0:y1, x0:x1, c] * (1 - blend) + v * blend
+        # Angular harmonic noise → irregular, organic edge
+        theta = np.arctan2(yy - cy, xx - cx)
+        ang_noise = (
+            0.14 * np.sin(theta * 3  + rng.uniform(0, 6.28)) +
+            0.09 * np.sin(theta * 7  + rng.uniform(0, 6.28)) +
+            0.06 * np.sin(theta * 13 + rng.uniform(0, 6.28))
+        )
+        dist = base_dist * (1.0 + ang_noise * min(intensity, 1.0) * 0.40)
+
+        # Soft interior fill + concentrated ring at the boundary
+        fill = np.clip(1.3 - dist * 1.3, 0, 1)
+        ring = np.exp(-((dist - 0.78) ** 2) / 0.030)
+
+        fill_str = float(rng.uniform(0.15, 0.50)) * intensity
+        ring_str = float(rng.uniform(0.30, 0.65)) * intensity
+        blend    = np.clip(fill * fill_str + ring * ring_str, 0, intensity * 0.9)
+
+        # Warm reddish-brown centre; ring is darker / more saturated
+        hr = float(rng.uniform(110, 195))
+        hg = float(rng.uniform(55,  120))
+        hb = float(rng.uniform(15,  55))
+        col_r = (fill * hr + ring * hr * 0.58) / np.maximum(fill + ring, 1e-6)
+        col_g = (fill * hg + ring * hg * 0.58) / np.maximum(fill + ring, 1e-6)
+        col_b = (fill * hb + ring * hb * 0.58) / np.maximum(fill + ring, 1e-6)
+
+        for c, col in enumerate([col_r, col_g, col_b]):
+            out[y0:y1, x0:x1, c] = out[y0:y1, x0:x1, c] * (1 - blend) + col * blend
 
     return _clip(out)
 
@@ -166,25 +199,52 @@ def crease(img: np.ndarray, intensity: float) -> np.ndarray:
 
 
 def water_stain(img: np.ndarray, intensity: float) -> np.ndarray:
-    """Elliptical tide-mark stains from liquid damage."""
+    """Water damage stains: irregular FBM edge, interior tinting, sharp tidemark.
+
+    Improvements over a plain elliptical ring:
+    • FBM angular deformation gives a non-circular, organic boundary
+    • Interior discoloration: warm yellow-brown tint where water soaked in
+    • Sharper tidemark ring (the dried mineral deposit at the water's edge)
+      with a distinctly brownish-tan colour
+    """
     rng = _rng()
     H, W = img.shape[:2]
     out  = img.astype(np.float32)
 
     for _ in range(max(1, int(intensity * 3))):
-        cx = int(rng.integers(W // 4, 3 * W // 4))
-        cy = int(rng.integers(H // 4, 3 * H // 4))
-        rx = int(rng.integers(W // 8, W // 3))
-        ry = int(rng.integers(H // 8, H // 3))
+        cx = int(rng.integers(W // 5, 4 * W // 5))
+        cy = int(rng.integers(H // 5, 4 * H // 5))
+        rx = max(4, int(rng.integers(W // 9, W // 3)))
+        ry = max(4, int(rng.integers(H // 9, H // 3)))
 
         yy, xx = np.mgrid[0:H, 0:W]
-        dist  = np.sqrt(((xx - cx) / max(rx, 1))**2 + ((yy - cy) / max(ry, 1))**2)
-        ring  = np.exp(-((dist - 0.9)**2) / max(0.05 * intensity, 0.005))
-        alpha = ring * intensity * 0.5
+        dy = (yy - cy).astype(np.float32)
+        dx = (xx - cx).astype(np.float32)
 
-        out[..., 0] = out[..., 0] * (1 - alpha) + 200 * alpha
-        out[..., 1] = out[..., 1] * (1 - alpha) + 180 * alpha
-        out[..., 2] = out[..., 2] * (1 - alpha) + 140 * alpha
+        # FBM-deformed ellipse distance
+        theta   = np.arctan2(dy, dx)
+        deform  = (
+            0.12 * np.sin(theta * 2 + rng.uniform(0, 6.28)) +
+            0.08 * np.sin(theta * 5 + rng.uniform(0, 6.28)) +
+            0.05 * np.sin(theta * 9 + rng.uniform(0, 6.28))
+        )
+        dist = (
+            np.sqrt((dx / rx) ** 2 + (dy / ry) ** 2)
+            * (1.0 + deform * intensity * 0.45)
+        )
+
+        # Interior: warm yellow-brown where water soaked in (dist < 1)
+        interior = np.clip(1.0 - dist, 0, 1) * 0.30 * intensity
+        out[..., 0] = out[..., 0] * (1 - interior) + 215 * interior
+        out[..., 1] = out[..., 1] * (1 - interior) + 192 * interior
+        out[..., 2] = out[..., 2] * (1 - interior) + 148 * interior
+
+        # Tidemark ring: sharp brownish line at the water boundary
+        ring_w = 0.035 + (1.0 - intensity) * 0.05
+        ring   = np.exp(-((dist - 0.92) ** 2) / ring_w) * 0.70 * intensity
+        out[..., 0] = out[..., 0] * (1 - ring) + 180 * ring
+        out[..., 1] = out[..., 1] * (1 - ring) + 148 * ring
+        out[..., 2] = out[..., 2] * (1 - ring) + 100 * ring
 
     return _clip(out)
 
@@ -868,6 +928,59 @@ def pencil_marks(img: np.ndarray, intensity: float) -> np.ndarray:
     return _clip(out)
 
 
+def ink_loss(img: np.ndarray, intensity: float) -> np.ndarray:
+    """Local ink erosion: organic blob patches where pigment has faded or been erased.
+
+    Simulates:
+    • Physical rubbing / partial erasure (rubber, finger abrasion)
+    • Spot chemical bleaching (solvent drip, cleaning agent)
+    • UV-induced local fading on stored documents
+
+    Only dark pixels (ink lines) are affected — white/paper areas are left
+    essentially untouched, so the symbol loses ink in irregular patches without
+    the background changing.
+
+    Uses two-scale coarse noise (large blobs + finer variation) upscaled to
+    full resolution for organic, non-repeating blob shapes.
+    """
+    rng = _rng()
+    H, W = img.shape[:2]
+    t    = float(intensity)
+    out  = img.astype(np.float32)
+
+    # Two-scale organic mask: large blobs dominant, fine variation adds detail
+    loss = np.zeros((H, W), dtype=np.float32)
+    for scale_div, amp in [(8, 0.70), (20, 0.30)]:
+        sh = max(2, H // scale_div)
+        sw = max(2, W // scale_div)
+        coarse = rng.uniform(0, 1, (sh, sw)).astype(np.float32)
+        upscaled = (
+            np.array(
+                Image.fromarray((coarse * 255).astype(np.uint8))
+                .resize((W, H), Image.BILINEAR)
+            ).astype(np.float32) / 255.0
+        )
+        loss += upscaled * amp
+
+    loss /= loss.max() + 1e-6
+
+    # Threshold: how much area is affected scales with intensity
+    thresh = max(0.10, 0.82 - t * 0.52)
+    loss   = np.clip((loss - thresh) / max(1.0 - thresh, 0.05), 0, 1)
+
+    # Restrict to ink-covered pixels — white paper is unaffected
+    gray       = img.mean(axis=2)
+    ink_weight = np.clip((230.0 - gray) / 185.0, 0, 1)  # 1 = black ink, 0 = white
+
+    fade       = loss * ink_weight * min(t * 1.15, 0.95)
+    fade_to    = np.array([218, 212, 200], dtype=np.float32)  # pale aged-paper tone
+
+    for c in range(3):
+        out[..., c] = out[..., c] * (1 - fade) + fade_to[c] * fade
+
+    return _clip(out)
+
+
 # ── Physical – Structural damage ─────────────────────────────────────────────
 
 def tear(img: np.ndarray, intensity: float) -> np.ndarray:
@@ -1068,6 +1181,7 @@ EFFECTS: dict[str, callable] = {
     "tape_residue":      tape_residue,
     "wrinkle":           wrinkle,
     "pencil_marks":      pencil_marks,
+    "ink_loss":          ink_loss,
     "tear":              tear,
     "paper_fold":        paper_fold,
     # Chemical
@@ -1120,7 +1234,7 @@ _APPLY_ORDER: list[str] = [
     # Physical
     "yellowing", "foxing", "crease", "water_stain", "edge_wear",
     "fingerprint", "binding_shadow", "bleed_through", "hole_punch", "tape_residue",
-    "wrinkle", "pencil_marks", "tear", "paper_fold",
+    "wrinkle", "pencil_marks", "ink_loss", "tear", "paper_fold",
     # Biological
     "mold", "mildew", "bio_foxing", "insect_damage",
     # Chemical
