@@ -571,6 +571,46 @@ def _patch_meta(rel: str | None, updates: dict) -> tuple[bool, str]:
         return False, str(exc)
 
 
+def _random_geom(arr, rng=None):
+    """Apply random mirror / rotation using PIL. Returns (new_arr, geom_dict).
+
+    Geometry applied:
+      - horizontal mirror  (p=0.5)
+      - vertical flip      (p=0.5)
+      - discrete rotation  (0 / 90 / 180 / 270°, equal weight)
+
+    Returns a dict entry for each transform that was applied so it shows up
+    in the effects display (value = 1.0 so it renders as 100%).
+    """
+    import random as _r
+    from PIL import Image as _Img
+
+    geom = {}
+    img  = _Img.fromarray(arr)
+
+    if _r.random() < 0.5:
+        img = img.transpose(_Img.FLIP_LEFT_RIGHT)
+        geom["mirror_h"] = 1.0
+
+    if _r.random() < 0.5:
+        img = img.transpose(_Img.FLIP_TOP_BOTTOM)
+        geom["mirror_v"] = 1.0
+
+    rot = _r.choice([0, 90, 180, 270])
+    if rot == 90:
+        img = img.transpose(_Img.ROTATE_90)
+        geom["rot_90"] = 1.0
+    elif rot == 180:
+        img = img.transpose(_Img.ROTATE_180)
+        geom["rot_180"] = 1.0
+    elif rot == 270:
+        img = img.transpose(_Img.ROTATE_270)
+        geom["rot_270"] = 1.0
+
+    import numpy as _np
+    return _np.array(img, dtype=arr.dtype), geom
+
+
 def _augment_preview(body: dict) -> tuple[dict | None, str]:
     """Render SVG → N augmented PNGs in memory, return base64 list.
 
@@ -616,8 +656,6 @@ def _augment_preview(body: dict) -> tuple[dict | None, str]:
             if randomize_per:
                 n      = _random.randint(3, 7)
                 picked = _random.sample(_APPLY_ORDER, min(n, len(_APPLY_ORDER)))
-                # Cap at 0.65 so aggressive effects (pixelation, over/underexpose)
-                # never fully obscure the symbol when fully randomised.
                 varied = {name: round(_random.uniform(0.15, 0.65), 2) for name in picked}
             elif effects:
                 varied = {
@@ -626,7 +664,9 @@ def _augment_preview(body: dict) -> tuple[dict | None, str]:
                 }
             else:
                 varied = {}
-            out = apply_effects(arr, varied)
+            frame, geom = _random_geom(arr)
+            varied = {**geom, **varied}
+            out = apply_effects(frame, varied)
             buf = _io.BytesIO()
             Image.fromarray(out).save(buf, format="PNG")
             images_out.append({
@@ -691,19 +731,19 @@ def _augment_generate(body: dict) -> tuple[dict | None, str]:
 
         for i in range(count):
             if randomize_per:
-                # Each image: independent random subset of ALL effects
                 n      = _random.randint(3, 7)
                 picked = _random.sample(_APPLY_ORDER, min(n, len(_APPLY_ORDER)))
                 varied = {name: round(_random.uniform(0.15, 0.65), 2) for name in picked}
             else:
-                # Vary the supplied effects ±30 %
                 varied = {
                     name: float(np.clip(intensity * _random.uniform(0.7, 1.3), 0.0, 1.0))
                     for name, intensity in effects.items()
                     if intensity > 0.0
                 }
 
-            arr   = apply_effects(base_arr.copy(), varied)
+            frame, geom = _random_geom(base_arr)
+            varied = {**geom, **varied}
+            arr   = apply_effects(frame, varied)
             fname = out_dir / f"{stem}_aug_{i + 1:04d}.png"
             Image.fromarray(arr).save(fname)
 
