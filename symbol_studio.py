@@ -799,14 +799,14 @@ def _augment_batch(body: dict):
     out_dir.mkdir(parents=True, exist_ok=True)
 
     # YOLO setup
+    def _sym_cls_name(sym_id: str) -> str:
+        parts = sym_id.split("/")
+        return f"{parts[-2]}/{parts[-1]}" if len(parts) >= 2 else parts[-1]
+
     if fmt == "yolo":
-        # Extract category from the 2nd-to-last path segment (works for 3- and 4-part IDs)
-        all_cats = sorted({
-            sym["path"].split("/")[-2]
-            for sym in symbols
-            if len(sym["path"].split("/")) >= 3
-        })
-        class_map  = {cat: i for i, cat in enumerate(all_cats)}
+        # Per-symbol class names (category/stem) for fine-grained specificity
+        all_cats = sorted({_sym_cls_name(sym["path"]) for sym in symbols})
+        class_map  = {cls: i for i, cls in enumerate(all_cats)}
         n_classes  = len(all_cats)
         img_dir    = out_dir / "images" / "train"
         lbl_dir    = out_dir / "labels" / "train"
@@ -857,9 +857,7 @@ def _augment_batch(body: dict):
 
             # YOLO: class index for this symbol
             if fmt == "yolo":
-                parts   = sym_id.split("/")
-                cat     = parts[-2] if len(parts) >= 3 else "unknown"
-                cls_idx = class_map.get(cat, 0)
+                cls_idx = class_map.get(_sym_cls_name(sym_id), 0)
 
             for j in range(count):
                 if rand_per:

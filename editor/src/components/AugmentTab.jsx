@@ -85,7 +85,7 @@ function EffectGroup({ group, augEffects, onChange, onToggle }) {
   );
 }
 
-// ── Lightbox modal ────────────────────────────────────────────────────────────
+// Lightbox modal
 function Lightbox({ images, idx, onClose, onGoto }) {
   const img = images[idx];
 
@@ -103,105 +103,70 @@ function Lightbox({ images, idx, onClose, onGoto }) {
 
   const effectEntries = img.effects ? Object.entries(img.effects).sort(([, a], [, b]) => b - a) : [];
 
+  const navBtnSx = {
+    color: '#fff',
+    bgcolor: 'rgba(0,0,0,0.65)',
+    border: '1px solid rgba(255,255,255,0.25)',
+    '&:hover': { bgcolor: 'rgba(0,0,0,0.85)' },
+    '&.Mui-disabled': { bgcolor: 'rgba(0,0,0,0.2)', color: 'rgba(255,255,255,0.2)', border: '1px solid rgba(255,255,255,0.08)' },
+  };
+
   return (
     <Modal open onClose={onClose}>
-      {/* Backdrop — click outside image to close */}
+      {/* Backdrop */}
       <Box
         onClick={onClose}
-        sx={{
-          position: 'fixed', inset: 0,
-          display: 'flex', flexDirection: 'column',
-          alignItems: 'center', justifyContent: 'center',
-          bgcolor: 'rgba(0,0,0,0.88)',
-          outline: 'none',
-        }}
+        sx={{ position: 'fixed', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', bgcolor: 'rgba(0,0,0,0.88)', outline: 'none' }}
       >
-        {/* Inner card — stop propagation so clicking image doesn't close */}
+        {/* Fixed close button — always top-right regardless of image size */}
+        <IconButton
+          onClick={onClose}
+          size="small"
+          sx={{ position: 'fixed', top: 14, right: 14, zIndex: 10, ...navBtnSx }}
+        >
+          <CloseIcon sx={{ fontSize: 18 }} />
+        </IconButton>
+
+        {/* Fixed prev button — always vertically centered on left edge */}
+        <IconButton
+          size="large"
+          disabled={idx === 0}
+          onClick={e => { e.stopPropagation(); onGoto(idx - 1); }}
+          sx={{ position: 'fixed', left: 14, top: '50%', transform: 'translateY(-50%)', zIndex: 10, ...navBtnSx }}
+        >
+          <ChevronLeftIcon />
+        </IconButton>
+
+        {/* Fixed next button — always vertically centered on right edge */}
+        <IconButton
+          size="large"
+          disabled={idx === images.length - 1}
+          onClick={e => { e.stopPropagation(); onGoto(idx + 1); }}
+          sx={{ position: 'fixed', right: 14, top: '50%', transform: 'translateY(-50%)', zIndex: 10, ...navBtnSx }}
+        >
+          <ChevronRightIcon />
+        </IconButton>
+
+        {/* Image card — stop propagation so clicking it doesn't close */}
         <Box
           onClick={e => e.stopPropagation()}
-          sx={{
-            position: 'relative',
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            maxWidth: '92vw',
-            bgcolor: '#0f0f14',
-            borderRadius: 2,
-            p: 2,
-          }}
+          sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', maxWidth: '82vw', bgcolor: '#0f0f14', borderRadius: 2, p: 2 }}
         >
-          {/* Close button */}
-          <IconButton
-            onClick={onClose}
-            size="small"
-            sx={{
-              position: 'absolute', top: 8, right: 8,
-              color: '#fff',
-              bgcolor: 'rgba(0,0,0,0.65)',
-              border: '1px solid rgba(255,255,255,0.25)',
-              '&:hover': { bgcolor: 'rgba(0,0,0,0.85)' },
-            }}
-          >
-            <CloseIcon sx={{ fontSize: 18 }} />
-          </IconButton>
-
-          {/* Image */}
           <Box
             component="img"
             src={img.src}
             alt={img.label}
-            sx={{
-              maxWidth: '88vw',
-              maxHeight: '76vh',
-              objectFit: 'contain',
-              bgcolor: 'white',
-              borderRadius: 2,
-              boxShadow: '0 8px 40px rgba(0,0,0,0.6)',
-              display: 'block',
-            }}
+            sx={{ maxWidth: '80vw', maxHeight: '76vh', objectFit: 'contain', bgcolor: 'white', borderRadius: 2, boxShadow: '0 8px 40px rgba(0,0,0,0.6)', display: 'block' }}
           />
 
-          {/* Navigation bar */}
-          <Stack direction="row" alignItems="center" justifyContent="space-between"
-            sx={{ mt: 1.5, width: '100%', px: 0.5 }}>
-            <IconButton
-              size="large"
-              disabled={idx === 0}
-              onClick={() => onGoto(idx - 1)}
-              sx={{
-                color: '#fff',
-                bgcolor: 'rgba(0,0,0,0.65)',
-                border: '1px solid rgba(255,255,255,0.25)',
-                '&:hover': { bgcolor: 'rgba(0,0,0,0.85)' },
-                '&.Mui-disabled': { bgcolor: 'rgba(0,0,0,0.2)', color: 'rgba(255,255,255,0.2)', border: '1px solid rgba(255,255,255,0.08)' },
-              }}
-            >
-              <ChevronLeftIcon />
-            </IconButton>
-
-            <Typography sx={{ color: '#fff', fontSize: 12, fontFamily: '"JetBrains Mono", "Cascadia Code", Consolas, monospace', textShadow: '0 1px 4px rgba(0,0,0,0.8)' }}>
-              {img.label} &nbsp;·&nbsp; {idx + 1} / {images.length}
-            </Typography>
-
-            <IconButton
-              size="large"
-              disabled={idx === images.length - 1}
-              onClick={() => onGoto(idx + 1)}
-              sx={{
-                color: '#fff',
-                bgcolor: 'rgba(0,0,0,0.65)',
-                border: '1px solid rgba(255,255,255,0.25)',
-                '&:hover': { bgcolor: 'rgba(0,0,0,0.85)' },
-                '&.Mui-disabled': { bgcolor: 'rgba(0,0,0,0.2)', color: 'rgba(255,255,255,0.2)', border: '1px solid rgba(255,255,255,0.08)' },
-              }}
-            >
-              <ChevronRightIcon />
-            </IconButton>
-          </Stack>
+          {/* Counter */}
+          <Typography sx={{ color: '#fff', fontSize: 12, mt: 1.5, fontFamily: '"JetBrains Mono", "Cascadia Code", Consolas, monospace', textShadow: '0 1px 4px rgba(0,0,0,0.8)' }}>
+            {img.label} &nbsp;·&nbsp; {idx + 1} / {images.length}
+          </Typography>
 
           {/* Applied effects chips */}
           {effectEntries.length > 0 && (
-            <Box sx={{ mt: 1, maxWidth: '88vw' }}>
+            <Box sx={{ mt: 1, maxWidth: '80vw' }}>
               <Stack direction="row" flexWrap="wrap" gap={0.5} justifyContent="center">
                 {effectEntries.map(([name, val]) => (
                   <Box key={name} sx={{

@@ -30,7 +30,12 @@ def _build_augment_transform():
 
     return A.Compose([
         A.HorizontalFlip(p=0.5),
-        A.ShiftScaleRotate(shift_limit=0.05, scale_limit=0.1, rotate_limit=15, p=0.5),
+        A.VerticalFlip(p=0.5),
+        A.RandomRotate90(p=0.5),
+        A.ShiftScaleRotate(shift_limit=0.10, scale_limit=0.15, rotate_limit=45, p=0.7),
+        A.Perspective(scale=(0.05, 0.15), p=0.4),
+        A.ElasticTransform(alpha=30, sigma=6, p=0.3),
+        A.GridDistortion(num_steps=5, distort_limit=0.3, p=0.3),
         A.RandomBrightnessContrast(p=0.3),
         A.GaussNoise(p=0.2),
     ])
@@ -43,7 +48,12 @@ def _build_augment_transform_yolo():
     return A.Compose(
         [
             A.HorizontalFlip(p=0.5),
-            A.ShiftScaleRotate(shift_limit=0.05, scale_limit=0.1, rotate_limit=15, p=0.5),
+            A.VerticalFlip(p=0.5),
+            A.RandomRotate90(p=0.5),
+            A.ShiftScaleRotate(shift_limit=0.10, scale_limit=0.15, rotate_limit=45, p=0.7),
+            A.Perspective(scale=(0.05, 0.15), p=0.4),
+            A.ElasticTransform(alpha=30, sigma=6, p=0.3),
+            A.GridDistortion(num_steps=5, distort_limit=0.3, p=0.3),
             A.RandomBrightnessContrast(p=0.3),
             A.GaussNoise(p=0.2),
         ],
@@ -318,8 +328,15 @@ def export_yolo_datasets(
         lbl_train   = dataset_dir / "labels" / "train"
         lbl_val     = dataset_dir / "labels" / "val"
 
-        categories = sorted({s.get("category", "unknown") for s in sym_list})
-        class_map  = {cat: idx for idx, cat in enumerate(categories)}
+        # Per-symbol class names: category/stem for specificity
+        def _cls_name(s: dict) -> str:
+            parts = s.get("id", "").split("/")
+            if len(parts) >= 2:
+                return f"{parts[-2]}/{parts[-1]}"
+            return Path(s.get("svg_path", "unknown")).stem
+
+        categories = sorted({_cls_name(s) for s in sym_list})
+        class_map  = {cls: idx for idx, cls in enumerate(categories)}
 
         # dict-format names required by YOLOv8-v12
         names_lines = "\n".join(f"  {i}: {c}" for i, c in enumerate(categories))
@@ -344,8 +361,7 @@ def export_yolo_datasets(
         aug_global = 0              # monotonic counter for train/val split (mod 5)
 
         for sym in sym_list:
-            cat       = sym.get("category", "unknown")
-            class_idx = class_map[cat]
+            class_idx = class_map[_cls_name(sym)]
             svg_rel   = sym.get("svg_path", "")
             svg_file  = (paths.REPO_ROOT / svg_rel) if svg_rel else None
 

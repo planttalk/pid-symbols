@@ -20,14 +20,14 @@ import LockIcon                from '@mui/icons-material/Lock';
 import LockOpenIcon            from '@mui/icons-material/LockOpen';
 import { useEditorStore }      from '../store';
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+// Helpers
 
 function Sep() {
   return (
     <Divider
       orientation="vertical"
       flexItem
-      sx={{ mx: 0.5, bgcolor: 'rgba(255,255,255,0.07)', alignSelf: 'center', height: 16 }}
+      sx={{ mx: 0.75, bgcolor: 'rgba(255,255,255,0.07)', alignSelf: 'center', height: 20 }}
     />
   );
 }
@@ -41,8 +41,8 @@ function Btn({ title, onClick, disabled, active, color = 'primary.main', childre
           onClick={onClick}
           disabled={disabled}
           sx={{
-            p: '4px',
-            borderRadius: '6px',
+            p: '6px',
+            borderRadius: '8px',
             color: active ? color : 'text.secondary',
             bgcolor: active ? 'rgba(129,140,248,0.14)' : 'transparent',
             '&:hover:not(:disabled)': {
@@ -58,10 +58,10 @@ function Btn({ title, onClick, disabled, active, color = 'primary.main', childre
   );
 }
 
-const S = { fontSize: 15 };   // standard icon size
-const SM = { fontSize: 13 };  // smaller icon
+const S  = { fontSize: 18 };  // standard icon size
+const SM = { fontSize: 15 };  // smaller icon
 
-// ── Dock ──────────────────────────────────────────────────────────────────────
+// Dock
 
 export default function CanvasDock() {
   const {
@@ -103,8 +103,8 @@ export default function CanvasDock() {
       display: 'flex',
       alignItems: 'center',
       gap: 0,
-      px: 1,
-      py: 0.35,
+      px: 1.25,
+      py: 0.5,
       bgcolor: 'rgba(12,12,18,0.95)',
       backdropFilter: 'blur(8px)',
       borderRadius: '8px',
@@ -114,7 +114,7 @@ export default function CanvasDock() {
       overflowX: 'auto',
     }}>
 
-      {/* ── Marker mode ───────────────────────────────────────────────── */}
+      {/* Marker mode */}
       <Btn title="Crosshair marker" onClick={() => setMarkerMode('crosshair')} active={markerMode === 'crosshair'}>
         <GpsFixedIcon sx={S} />
       </Btn>
@@ -127,7 +127,7 @@ export default function CanvasDock() {
 
       <Sep />
 
-      {/* ── Grid / Snap ───────────────────────────────────────────────── */}
+      {/* Grid / Snap */}
       <Btn title={showGrid ? 'Hide grid' : 'Show grid'} onClick={() => setShowGrid(!showGrid)} active={showGrid}>
         <GridOnIcon sx={S} />
       </Btn>
@@ -137,9 +137,9 @@ export default function CanvasDock() {
 
       <Sep />
 
-      {/* ── Axis lock ─────────────────────────────────────────────────── */}
+      {/* Axis lock */}
       <Btn title="Free movement" onClick={() => setAxisLock('FREE')} active={axisLock === 'FREE'}>
-        <Typography sx={{ fontSize: 9, fontWeight: 800, lineHeight: 1, fontFamily: 'monospace' }}>XY</Typography>
+        <Typography sx={{ fontSize: 10, fontWeight: 800, lineHeight: 1, fontFamily: 'monospace' }}>XY</Typography>
       </Btn>
       <Btn title="Lock X — vertical movement only" onClick={() => setAxisLock('LOCK_X')} active={axisLock === 'LOCK_X'}>
         <SwapVertIcon sx={SM} />
@@ -150,7 +150,7 @@ export default function CanvasDock() {
 
       <Sep />
 
-      {/* ── Zoom ──────────────────────────────────────────────────────── */}
+      {/* Zoom */}
       <Btn title="Zoom out" onClick={() => zoomStep(-1)}>
         <ZoomOutIcon sx={S} />
       </Btn>
@@ -160,30 +160,34 @@ export default function CanvasDock() {
       <Btn title="Zoom in" onClick={() => zoomStep(1)}>
         <ZoomInIcon sx={S} />
       </Btn>
-      <Tooltip title={`Zoom: ${Math.round(zoom)}×`} placement="top" disableInteractive>
-        <Slider
-          size="small"
-          min={1} max={60} step={1}
-          value={Math.round(zoom)}
-          onChange={(_, v) => setZoom(v)}
-          sx={{
-            width: 72, mx: 0.75, color: 'primary.main', flexShrink: 0,
-            '& .MuiSlider-thumb': { width: 10, height: 10 },
-            '& .MuiSlider-track': { height: 2 },
-            '& .MuiSlider-rail':  { height: 2, opacity: 0.3 },
-          }}
-        />
-      </Tooltip>
-      <Typography sx={{
-        fontSize: 9, color: 'text.disabled', minWidth: 22,
-        textAlign: 'right', fontFamily: '"JetBrains Mono", monospace',
-      }}>
-        {Math.round(zoom)}×
-      </Typography>
+
+      {/* Slider in its own flex container so it never overlaps adjacent buttons */}
+      <Box sx={{ display: 'flex', alignItems: 'center', mx: 1, gap: 0.75, flexShrink: 0 }}>
+        <Tooltip title={`Zoom: ${Math.round(zoom)}×`} placement="top" disableInteractive>
+          <Slider
+            size="small"
+            min={1} max={60} step={1}
+            value={Math.round(zoom)}
+            onChange={(_, v) => setZoom(v)}
+            sx={{
+              width: 80, color: 'primary.main',
+              '& .MuiSlider-thumb': { width: 12, height: 12 },
+              '& .MuiSlider-track': { height: 2 },
+              '& .MuiSlider-rail':  { height: 2, opacity: 0.3 },
+            }}
+          />
+        </Tooltip>
+        <Typography sx={{
+          fontSize: 10, color: 'text.disabled', minWidth: 26,
+          textAlign: 'right', fontFamily: '"JetBrains Mono", monospace',
+        }}>
+          {Math.round(zoom)}×
+        </Typography>
+      </Box>
 
       <Sep />
 
-      {/* ── Port actions ──────────────────────────────────────────────── */}
+      {/* Port actions */}
       <Btn title="Add port at center" onClick={handleAddCenter} disabled={!currentPath}>
         <AddCircleOutlineIcon sx={S} />
       </Btn>
@@ -207,7 +211,7 @@ export default function CanvasDock() {
       >
         <Box sx={{ display: 'flex', alignItems: 'center' }}>
           <SwapHorizIcon sx={SM} />
-          <Typography sx={{ fontSize: 7, lineHeight: 1, fontWeight: 700 }}>Y</Typography>
+          <Typography sx={{ fontSize: 8, lineHeight: 1, fontWeight: 700 }}>Y</Typography>
         </Box>
       </Btn>
       <Btn
@@ -218,13 +222,13 @@ export default function CanvasDock() {
       >
         <Box sx={{ display: 'flex', alignItems: 'center' }}>
           <SwapVertIcon sx={SM} />
-          <Typography sx={{ fontSize: 7, lineHeight: 1, fontWeight: 700 }}>X</Typography>
+          <Typography sx={{ fontSize: 8, lineHeight: 1, fontWeight: 700 }}>X</Typography>
         </Box>
       </Btn>
 
       <Sep />
 
-      {/* ── Save / workflow ───────────────────────────────────────────── */}
+      {/* Save / workflow */}
       <Btn title="Save JSON" onClick={() => saveSymbol()} disabled={!currentPath}>
         <SaveIcon sx={S} />
       </Btn>
@@ -243,7 +247,7 @@ export default function CanvasDock() {
 
       <Sep />
 
-      {/* ── Flags ─────────────────────────────────────────────────────── */}
+      {/* Flags */}
       <Btn
         title={flag === 'unrelated' ? 'Remove "unrelated" flag' : 'Flag as Unrelated (not a P&ID symbol)'}
         onClick={() => flagSymbol('unrelated')}
