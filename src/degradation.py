@@ -811,6 +811,114 @@ def pencil_marks(img: np.ndarray, intensity: float) -> np.ndarray:
     return _clip(out)
 
 
+# ── Physical – Structural damage ─────────────────────────────────────────────
+
+def tear(img: np.ndarray, intensity: float) -> np.ndarray:
+    """Paper tear along one edge: jagged missing chunk + fibre brightening.
+
+    Simulates physical damage where an edge or corner has been torn away.
+    The torn region becomes white (paper gone); the boundary gets slight
+    fibre brightening.  Tear depth scales with intensity (up to ~22 % of the
+    image dimension at full strength).
+    """
+    rng  = _rng()
+    H, W = img.shape[:2]
+    t    = float(intensity)
+    out  = img.copy().astype(np.float32)
+
+    edge = int(rng.integers(0, 4))  # 0=top  1=bottom  2=left  3=right
+
+    if edge in (0, 1):  # profile varies by column
+        n         = W
+        max_depth = max(3, int(H * 0.22 * t))
+    else:               # profile varies by row
+        n         = H
+        max_depth = max(3, int(W * 0.22 * t))
+
+    if max_depth < 2:
+        return img
+
+    # Random-walk depth profile, then smooth via PIL
+    steps   = rng.standard_normal(n).astype(np.float32) * max_depth * 0.12
+    profile = np.cumsum(steps)
+    profile -= profile.min()
+    profile  = profile / max(profile.max(), 1e-6) * max_depth
+
+    profile_img = Image.fromarray(
+        np.clip(profile / max_depth * 255, 0, 255).astype(np.uint8)[np.newaxis, :]
+    )
+    profile = (
+        np.array(profile_img.filter(ImageFilter.GaussianBlur(max(1, n // 20))))
+        .flatten().astype(np.float32) / 255.0 * max_depth
+    )
+    depths = profile.astype(int)
+
+    row_idx = np.arange(H)[:, np.newaxis]  # (H, 1)
+    col_idx = np.arange(W)[np.newaxis, :]  # (1, W)
+
+    if edge == 0:   # top
+        d_map  = depths[np.newaxis, :]
+        torn   = row_idx < d_map
+        fringe = (row_idx >= d_map) & (row_idx < d_map + 2)
+    elif edge == 1: # bottom
+        d_map  = depths[np.newaxis, :]
+        torn   = row_idx >= (H - d_map)
+        fringe = (row_idx < (H - d_map)) & (row_idx >= (H - d_map - 2))
+    elif edge == 2: # left
+        d_map  = depths[:, np.newaxis]
+        torn   = col_idx < d_map
+        fringe = (col_idx >= d_map) & (col_idx < d_map + 2)
+    else:           # right
+        d_map  = depths[:, np.newaxis]
+        torn   = col_idx >= (W - d_map)
+        fringe = (col_idx < (W - d_map)) & (col_idx >= (W - d_map - 2))
+
+    out[torn]   = 255.0
+    out[fringe] = np.clip(out[fringe] * 1.30, 0, 255)
+    return _clip(out)
+
+
+def paper_fold(img: np.ndarray, intensity: float) -> np.ndarray:
+    """Fold crease across the paper: shadow valley + highlight at the crease.
+
+    Simulates folding a sheet in half — the crease leaves a dark shadow on the
+    compressed side and a thin bright highlight right at the fold line, giving
+    a 3-D relief appearance.
+    """
+    rng  = _rng()
+    H, W = img.shape[:2]
+    t    = float(intensity)
+
+    horizontal = bool(rng.integers(0, 2))
+
+    if horizontal:
+        pos      = int(rng.uniform(0.2, 0.8) * H)
+        dist     = (np.arange(H) - pos).astype(np.float32)  # (H,)
+        shadow_w = max(H * 0.06, 5.0)
+    else:
+        pos      = int(rng.uniform(0.2, 0.8) * W)
+        dist     = (np.arange(W) - pos).astype(np.float32)  # (W,)
+        shadow_w = max(W * 0.06, 5.0)
+
+    # Shadow: Gaussian centred slightly before the fold
+    shadow    = np.exp(-((dist - shadow_w * 0.4) ** 2) / (2 * (shadow_w * 0.5) ** 2))
+    shadow    = shadow * 0.30 * t
+
+    # Highlight: narrow Gaussian right at the crease line
+    hi_w      = shadow_w * 0.25
+    highlight = np.exp(-(dist ** 2) / (2 * hi_w ** 2))
+    highlight = highlight * 0.20 * t
+
+    factor = np.clip(1.0 - shadow + highlight, 0.65, 1.20).astype(np.float32)
+
+    if horizontal:
+        out = img.astype(np.float32) * factor[:, np.newaxis, np.newaxis]
+    else:
+        out = img.astype(np.float32) * factor[np.newaxis, :, np.newaxis]
+
+    return _clip(out)
+
+
 # ── Reproduction ──────────────────────────────────────────────────────────────
 
 def photocopy(img: np.ndarray, intensity: float) -> np.ndarray:
@@ -871,6 +979,8 @@ EFFECTS: dict[str, callable] = {
     "tape_residue":      tape_residue,
     "wrinkle":           wrinkle,
     "pencil_marks":      pencil_marks,
+    "tear":              tear,
+    "paper_fold":        paper_fold,
     # Chemical
     "ink_fading":        ink_fading,
     "ink_bleed":         ink_bleed,
@@ -921,7 +1031,7 @@ _APPLY_ORDER: list[str] = [
     # Physical
     "yellowing", "foxing", "crease", "water_stain", "edge_wear",
     "fingerprint", "binding_shadow", "bleed_through", "hole_punch", "tape_residue",
-    "wrinkle", "pencil_marks",
+    "wrinkle", "pencil_marks", "tear", "paper_fold",
     # Biological
     "mold", "mildew", "bio_foxing", "insect_damage",
     # Chemical

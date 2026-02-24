@@ -200,7 +200,7 @@ function Lightbox({ images, idx, onClose, onGoto }) {
 }
 
 // ── Smart grid: adaptive cols + pagination for large sets ─────────────────────
-function SmartGrid({ images, label }) {
+function SmartGrid({ images, label, onClear }) {
   const [page,        setPage]        = useState(0);
   const [lightboxIdx, setLightboxIdx] = useState(null);
 
@@ -216,7 +216,6 @@ function SmartGrid({ images, label }) {
   const cols        = gridCols(n);
 
   const openLightbox = (absoluteIdx) => {
-    // When navigating via lightbox arrows, sync the grid page if needed
     const targetPage = Math.floor(absoluteIdx / PAGE_SIZE);
     if (targetPage !== page) setPage(targetPage);
     setLightboxIdx(absoluteIdx);
@@ -224,37 +223,33 @@ function SmartGrid({ images, label }) {
 
   return (
     <Box sx={{ mt: 1 }}>
-      <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 0.5 }}>
-        <Typography sx={{
-          fontSize: 11,
-          color: 'text.secondary',
-          fontFamily: 'monospace',
-          borderBottom: '1px solid rgba(255,255,255,0.07)',
-          pb: 0.5,
-          mb: 1,
-          width: '100%',
-        }}>
+      {/* Header row: label | pagination + clear */}
+      <Stack direction="row" alignItems="center" justifyContent="space-between"
+        sx={{ borderBottom: '1px solid rgba(255,255,255,0.07)', pb: 0.5, mb: 1 }}>
+        <Typography sx={{ fontSize: 11, color: 'text.secondary', fontFamily: 'monospace' }}>
           {label} &nbsp;·&nbsp; {n} image{n !== 1 ? 's' : ''}
         </Typography>
-        {needsPaging && (
-          <Stack direction="row" alignItems="center" gap={0.25} sx={{ flexShrink: 0, ml: 1 }}>
-            <IconButton
-              size="small" disabled={page === 0}
-              onClick={() => setPage(p => p - 1)}
-            >
-              <ChevronLeftIcon sx={{ fontSize: 14 }} />
+        <Stack direction="row" alignItems="center" gap={0.25} sx={{ flexShrink: 0, ml: 1 }}>
+          {needsPaging && (
+            <>
+              <IconButton size="small" disabled={page === 0} onClick={() => setPage(p => p - 1)}>
+                <ChevronLeftIcon sx={{ fontSize: 14 }} />
+              </IconButton>
+              <Typography sx={{ fontSize: 10, color: 'text.secondary', minWidth: 44, textAlign: 'center' }}>
+                {page + 1} / {totalPages}
+              </Typography>
+              <IconButton size="small" disabled={page >= totalPages - 1} onClick={() => setPage(p => p + 1)}>
+                <ChevronRightIcon sx={{ fontSize: 14 }} />
+              </IconButton>
+            </>
+          )}
+          {onClear && (
+            <IconButton size="small" onClick={onClear} title="Clear results"
+              sx={{ color: 'text.disabled', '&:hover': { color: 'text.secondary' } }}>
+              <CloseIcon sx={{ fontSize: 13 }} />
             </IconButton>
-            <Typography sx={{ fontSize: 10, color: 'text.secondary', minWidth: 44, textAlign: 'center' }}>
-              {page + 1} / {totalPages}
-            </Typography>
-            <IconButton
-              size="small" disabled={page >= totalPages - 1}
-              onClick={() => setPage(p => p + 1)}
-            >
-              <ChevronRightIcon sx={{ fontSize: 14 }} />
-            </IconButton>
-          </Stack>
-        )}
+          )}
+        </Stack>
       </Stack>
 
       <ImageList cols={cols} gap={3}>
@@ -275,7 +270,7 @@ function SmartGrid({ images, label }) {
               <ImageListItemBar
                 title={img.label}
                 position="below"
-                sx={{ '& .MuiImageListItemBar-title': { fontSize: 9, color: 'text.disabled' } }}
+                sx={{ '& .MuiImageListItemBar-title': { fontSize: 10, color: 'text.secondary' } }}
               />
             </ImageListItem>
           );
@@ -733,7 +728,7 @@ export default function AugmentTab() {
         )}
 
         {/* Combo results */}
-        {comboMsg && (
+        {comboMsg && !comboing && (
           <Alert severity={comboMsg.ok ? 'success' : 'error'} sx={{ py: 0, fontSize: 11, mt: 0.5 }}>
             {comboMsg.ok || comboMsg.err}
           </Alert>
@@ -743,7 +738,11 @@ export default function AugmentTab() {
             <CircularProgress size={24} />
           </Box>
         ) : (
-          <SmartGrid images={comboImages} label={`Combinations (1–${maxCombo} effects)`} />
+          <SmartGrid
+            images={comboImages}
+            label={`Combinations (1–${maxCombo} effects)`}
+            onClear={() => { setComboImages([]); setComboMsg(null); }}
+          />
         )}
 
       </Box>
