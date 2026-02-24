@@ -611,7 +611,7 @@ def _augment_preview(body: dict) -> tuple[dict | None, str]:
             img = img.resize((size, size), Image.LANCZOS)
         arr = np.array(img, dtype=np.uint8)
 
-        images_b64: list[str] = []
+        images_out: list[dict] = []
         for _ in range(count):
             if randomize_per:
                 n      = _random.randint(3, 7)
@@ -621,7 +621,7 @@ def _augment_preview(body: dict) -> tuple[dict | None, str]:
                 varied = {name: round(_random.uniform(0.15, 0.65), 2) for name in picked}
             elif effects:
                 varied = {
-                    name: float(np.clip(intensity * _random.uniform(0.7, 1.3), 0.0, 1.0))
+                    name: round(float(np.clip(intensity * _random.uniform(0.7, 1.3), 0.0, 1.0)), 3)
                     for name, intensity in effects.items() if intensity > 0.0
                 }
             else:
@@ -629,11 +629,12 @@ def _augment_preview(body: dict) -> tuple[dict | None, str]:
             out = apply_effects(arr, varied)
             buf = _io.BytesIO()
             Image.fromarray(out).save(buf, format="PNG")
-            images_b64.append(
-                "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode("ascii")
-            )
+            images_out.append({
+                "src":     "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode("ascii"),
+                "effects": varied,
+            })
 
-        return {"images": images_b64}, ""
+        return {"images": images_out}, ""
     except Exception as exc:
         return None, str(exc)
 
@@ -710,7 +711,10 @@ def _augment_generate(body: dict) -> tuple[dict | None, str]:
                 buf = _io.BytesIO()
                 Image.fromarray(arr).save(buf, format="PNG")
                 b64 = base64.b64encode(buf.getvalue()).decode("ascii")
-                images_b64.append(f"data:image/png;base64,{b64}")
+                images_b64.append({
+                    "src":     f"data:image/png;base64,{b64}",
+                    "effects": varied,
+                })
 
         result: dict = {"saved": count, "output_dir": str(out_dir.resolve())}
         if return_images:

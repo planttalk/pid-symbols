@@ -1,4 +1,4 @@
-import { Box, IconButton, Tooltip, Divider, Typography } from '@mui/material';
+import { Box, IconButton, Tooltip, Divider, Typography, Slider } from '@mui/material';
 import AddCircleOutlineIcon    from '@mui/icons-material/AddCircleOutline';
 import DeleteOutlineIcon       from '@mui/icons-material/DeleteOutline';
 import GridOnIcon              from '@mui/icons-material/GridOn';
@@ -160,9 +160,23 @@ export default function CanvasDock() {
       <Btn title="Zoom in" onClick={() => zoomStep(1)}>
         <ZoomInIcon sx={S} />
       </Btn>
+      <Tooltip title={`Zoom: ${Math.round(zoom)}×`} placement="top" disableInteractive>
+        <Slider
+          size="small"
+          min={1} max={60} step={1}
+          value={Math.round(zoom)}
+          onChange={(_, v) => setZoom(v)}
+          sx={{
+            width: 72, mx: 0.75, color: 'primary.main', flexShrink: 0,
+            '& .MuiSlider-thumb': { width: 10, height: 10 },
+            '& .MuiSlider-track': { height: 2 },
+            '& .MuiSlider-rail':  { height: 2, opacity: 0.3 },
+          }}
+        />
+      </Tooltip>
       <Typography sx={{
-        fontSize: 9, color: 'text.disabled', minWidth: 24,
-        textAlign: 'center', fontFamily: '"JetBrains Mono", monospace',
+        fontSize: 9, color: 'text.disabled', minWidth: 22,
+        textAlign: 'right', fontFamily: '"JetBrains Mono", monospace',
       }}>
         {Math.round(zoom)}×
       </Typography>

@@ -3,7 +3,7 @@ import {
   Box, Typography, Button, Slider, Checkbox, FormControlLabel,
   TextField, Stack, Accordion, AccordionSummary, AccordionDetails,
   Alert, CircularProgress, Switch, ImageList, ImageListItem,
-  ImageListItemBar, Divider, IconButton, Modal,
+  ImageListItemBar, Divider, IconButton, Modal, Tooltip,
   Select, MenuItem, FormControl, LinearProgress,
   Dialog, DialogTitle, DialogContent, DialogActions,
 } from '@mui/material';
@@ -101,6 +101,8 @@ function Lightbox({ images, idx, onClose, onGoto }) {
 
   if (!img) return null;
 
+  const effectEntries = img.effects ? Object.entries(img.effects).sort(([, a], [, b]) => b - a) : [];
+
   return (
     <Modal open onClose={onClose}>
       {/* Backdrop — click outside image to close */}
@@ -150,7 +152,7 @@ function Lightbox({ images, idx, onClose, onGoto }) {
             alt={img.label}
             sx={{
               maxWidth: '88vw',
-              maxHeight: '80vh',
+              maxHeight: '76vh',
               objectFit: 'contain',
               bgcolor: 'white',
               borderRadius: 2,
@@ -196,6 +198,26 @@ function Lightbox({ images, idx, onClose, onGoto }) {
               <ChevronRightIcon />
             </IconButton>
           </Stack>
+
+          {/* Applied effects chips */}
+          {effectEntries.length > 0 && (
+            <Box sx={{ mt: 1, maxWidth: '88vw' }}>
+              <Stack direction="row" flexWrap="wrap" gap={0.5} justifyContent="center">
+                {effectEntries.map(([name, val]) => (
+                  <Box key={name} sx={{
+                    bgcolor: 'rgba(255,255,255,0.08)',
+                    border: '1px solid rgba(255,255,255,0.14)',
+                    borderRadius: 0.75, px: 0.75, py: '2px',
+                    fontSize: 10, color: 'rgba(255,255,255,0.75)',
+                    fontFamily: '"JetBrains Mono", "Cascadia Code", Consolas, monospace',
+                    whiteSpace: 'nowrap',
+                  }}>
+                    {name}&nbsp;<span style={{ color: '#818cf8' }}>{Math.round(val * 100)}%</span>
+                  </Box>
+                ))}
+              </Stack>
+            </Box>
+          )}
         </Box>
       </Box>
     </Modal>
@@ -258,10 +280,11 @@ function SmartGrid({ images, label, onClear }) {
       <ImageList cols={cols} gap={3}>
         {visible.map((img, i) => {
           const absIdx = page * PAGE_SIZE + i;
+          const fxEntries = img.effects ? Object.entries(img.effects).sort(([, a], [, b]) => b - a) : [];
           return (
             <ImageListItem
               key={absIdx}
-              sx={{ cursor: 'zoom-in' }}
+              sx={{ cursor: 'zoom-in', position: 'relative' }}
               onClick={() => openLightbox(absIdx)}
             >
               <Box
@@ -270,6 +293,37 @@ function SmartGrid({ images, label, onClear }) {
                 alt={img.label}
                 sx={{ width: '100%', aspectRatio: '1', objectFit: 'contain', bgcolor: 'white', borderRadius: 0.5 }}
               />
+              {/* Effects count badge */}
+              {fxEntries.length > 0 && (
+                <Tooltip
+                  placement="top"
+                  disableInteractive
+                  title={
+                    <Box sx={{ p: 0.25 }}>
+                      {fxEntries.map(([name, val]) => (
+                        <Typography key={name} sx={{ fontSize: 10, fontFamily: '"JetBrains Mono", monospace', lineHeight: 1.6 }}>
+                          {name}: <span style={{ color: '#818cf8' }}>{Math.round(val * 100)}%</span>
+                        </Typography>
+                      ))}
+                    </Box>
+                  }
+                >
+                  <Box sx={{
+                    position: 'absolute', bottom: 20, right: 3,
+                    minWidth: 16, height: 16, borderRadius: 1,
+                    bgcolor: 'rgba(10,10,20,0.80)',
+                    border: '1px solid rgba(129,140,248,0.5)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    px: '3px',
+                    color: '#818cf8', fontSize: 9,
+                    fontFamily: '"JetBrains Mono", monospace',
+                    pointerEvents: 'auto',
+                    zIndex: 1,
+                  }}>
+                    {fxEntries.length}
+                  </Box>
+                </Tooltip>
+              )}
               <ImageListItemBar
                 title={img.label}
                 position="below"
@@ -397,7 +451,11 @@ export default function AugmentTab() {
       });
       if (!res.ok) throw new Error(await res.text());
       const data = await res.json();
-      const imgs = (data.images || []).map((src, i) => ({ src, label: `#${i + 1}` }));
+      const imgs = (data.images || []).map((item, i) => ({
+        src:     typeof item === 'string' ? item : item.src,
+        label:   `#${i + 1}`,
+        effects: typeof item === 'string' ? null : (item.effects || null),
+      }));
       setImages(imgs);
       setImagesLabel('Preview (unsaved)');
     } catch (e) {
@@ -479,7 +537,11 @@ export default function AugmentTab() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Generation failed');
-      const imgs = (data.images || []).map((src, i) => ({ src, label: `#${i + 1}` }));
+      const imgs = (data.images || []).map((item, i) => ({
+        src:     typeof item === 'string' ? item : item.src,
+        label:   `#${i + 1}`,
+        effects: typeof item === 'string' ? null : (item.effects || null),
+      }));
       setImages(imgs);
       setAugImages(imgs);
       setImagesLabel(`Saved → ${data.output_dir}`);
