@@ -879,7 +879,13 @@ def aged_brittle(img: np.ndarray, intensity: float) -> np.ndarray:
 # Physical extras
 
 def wrinkle(img: np.ndarray, intensity: float) -> np.ndarray:
-    """Aggressive paper wrinkles: geometric mesh deformation + deep shadow/highlight/tint."""
+    """Realistic paper wrinkles: mesh warp + per-zone colour treatment.
+
+    Three distinct zones, each with independent brightness and colour:
+      Valley  (concave, dist < 0) — deep dark shadow, warm amber/sepia tint.
+      Ridge   (fold peak, dist≈0) — bright specular, warm-white fibre reflection.
+      Convex  (dist > 0)          — subtle lift, mild warm tint.
+    """
     import cv2
     rng  = _rng()
     H, W = img.shape[:2]
@@ -889,9 +895,12 @@ def wrinkle(img: np.ndarray, intensity: float) -> np.ndarray:
     ys = np.arange(H, dtype=np.float32)
     XX, YY = np.meshgrid(xs, ys)
 
-    factor = np.ones((H, W), dtype=np.float32)
-    disp_x = np.zeros((H, W), dtype=np.float32)   # column displacement for cv2.remap
-    disp_y = np.zeros((H, W), dtype=np.float32)   # row displacement for cv2.remap
+    # Accumulate each zone separately so colour treatments don't interfere
+    shadow_acc    = np.zeros((H, W), dtype=np.float32)   # valley darkness
+    highlight_acc = np.zeros((H, W), dtype=np.float32)   # ridge brightness
+    lift_acc      = np.zeros((H, W), dtype=np.float32)   # convex lift
+    disp_x        = np.zeros((H, W), dtype=np.float32)
+    disp_y        = np.zeros((H, W), dtype=np.float32)
 
     n_creases = rng.integers(3, max(5, int(9 * t) + 3))
     for _ in range(n_creases):
@@ -900,74 +909,83 @@ def wrinkle(img: np.ndarray, intensity: float) -> np.ndarray:
         cy           = rng.uniform(0.08, 0.92) * H
         cos_a, sin_a = float(np.cos(angle)), float(np.sin(angle))
 
-        # Signed perpendicular distance from this crease line
         dist = (XX - cx) * sin_a - (YY - cy) * cos_a
 
         # FBM waviness along the crease
         along    = (XX - cx) * cos_a + (YY - cy) * sin_a
-        fbm      = _fbm_1d(max(H, W) + 2, octaves=5, roughness=0.70, rng=rng)
+        fbm      = _fbm_1d(max(H, W) + 2, octaves=5, roughness=0.72, rng=rng)
         idx_raw  = (along / max(H, W) + 0.5) * (len(fbm) - 1)
         idx_clip = np.clip(idx_raw, 0, len(fbm) - 2).astype(np.int32)
         frac     = idx_raw - idx_clip
         fbm_val  = fbm[idx_clip] * (1 - frac) + fbm[idx_clip + 1] * frac
-        dist     = dist - fbm_val * (min(H, W) * 0.06 * t)
+        dist     = dist - fbm_val * (min(H, W) * 0.065 * t)
 
-        # Variable crease geometry
-        crease_w     = max(1.0, min(H, W) * float(rng.uniform(0.006, 0.032)))
-        sigma_shadow = crease_w * float(rng.uniform(4.5, 8.0))
-        sigma_hi     = crease_w * float(rng.uniform(0.7, 1.4))
+        crease_w     = max(1.0, min(H, W) * float(rng.uniform(0.007, 0.034)))
+        sigma_shadow = crease_w * float(rng.uniform(4.5, 8.5))
+        sigma_hi     = crease_w * float(rng.uniform(0.55, 1.1))   # narrow → sharp peak
         sigma_lift   = crease_w * float(rng.uniform(2.5, 5.5))
         strength     = float(rng.uniform(0.65, 1.0))
 
-        # Brightness: shadow / highlight / lift
         shadow    = np.exp(-(np.maximum(-dist, 0) ** 2) / (2 * sigma_shadow ** 2))
         highlight = np.exp(-(dist ** 2)                / (2 * sigma_hi ** 2))
         lift      = np.exp(-(np.maximum(dist, 0) ** 2) / (2 * sigma_lift ** 2))
-        factor -= shadow    * 0.55 * t * strength
-        factor += highlight * 0.26 * t * strength
-        factor += lift      * 0.11 * t * strength
 
-        # Geometric warp: both sides of the crease converge toward it.
-        # In cv2.remap, map_x/map_y are SOURCE coords for each DESTINATION pixel.
-        # Shifting source in the crease-normal direction (+sin_a, -cos_a) makes
-        # destination pixels appear pulled toward the crease — like paper bunching.
+        shadow_acc    += shadow    * 0.72 * t * strength
+        highlight_acc += highlight * 0.42 * t * strength
+        lift_acc      += lift      * 0.13 * t * strength
+
+        # Geometric warp — convergent push toward crease from both sides
         sigma_warp = crease_w * 4.5
-        warp_amp   = crease_w * 5.0 * t * strength
+        warp_amp   = crease_w * 5.5 * t * strength
         push       = np.sign(dist) * np.exp(-dist ** 2 / (2 * sigma_warp ** 2)) * warp_amp
         disp_x    += push * sin_a
-        disp_y    -= push * cos_a   # normal y-component is -cos_a
+        disp_y    -= push * cos_a
 
-    # Paper buckling: medium-frequency undulation
+    # Paper buckling + micro-crinkle modulation
     buck_scale = max(3, min(H, W) // 7)
     bh = max(2, H // buck_scale);  bw = max(2, W // buck_scale)
     buck_noise = rng.random((bh, bw)).astype(np.float32)
-    buck_map   = np.array(
-        Image.fromarray((buck_noise * 255).astype(np.uint8)).resize((W, H), Image.BILINEAR)
-    ).astype(np.float32) / 255.0
-    factor *= 1.0 + (buck_map - 0.5) * t * 0.28
+    buck_map   = (np.array(Image.fromarray((buck_noise * 255).astype(np.uint8))
+                           .resize((W, H), Image.BILINEAR)).astype(np.float32) / 255.0)
 
-    # Micro-crinkle: fine surface roughness
     fine_scale = max(2, min(H, W) // 28)
     fh = max(2, H // fine_scale);  fw = max(2, W // fine_scale)
     fine_noise = rng.random((fh, fw)).astype(np.float32)
-    fine_map   = np.array(
-        Image.fromarray((fine_noise * 255).astype(np.uint8)).resize((W, H), Image.BILINEAR)
-    ).astype(np.float32) / 255.0
+    fine_map   = (np.array(Image.fromarray((fine_noise * 255).astype(np.uint8))
+                           .resize((W, H), Image.BILINEAR)).astype(np.float32) / 255.0)
+
+    # Compose brightness factor from the three zones
+    factor  = (1.0
+               - shadow_acc.clip(0, 1)
+               + highlight_acc.clip(0, 1)
+               + lift_acc.clip(0, 1))
+    factor *= 1.0 + (buck_map - 0.5) * t * 0.28
     factor *= 1.0 + (fine_map - 0.5) * t * 0.09
+    factor  = factor.clip(0.12, 1.50)   # deep valley ↔ bright ridge
 
-    factor = factor.clip(0.26, 1.32)
-
-    # 1. Apply geometric warp (remap)
+    # 1. Geometric warp
     map_x  = np.clip(XX + disp_x, 0, W - 1).astype(np.float32)
     map_y  = np.clip(YY + disp_y, 0, H - 1).astype(np.float32)
     warped = cv2.remap(img, map_x, map_y, cv2.INTER_LINEAR,
                        borderMode=cv2.BORDER_REPLICATE)
 
-    # 2. Apply brightness factor + warm shadow tint
-    out          = warped.astype(np.float32) * factor[..., None]
-    shadow_depth = np.clip(1.0 - factor, 0.0, 1.0)
-    out[..., 0]  = np.clip(out[..., 0] + shadow_depth * 12 * t, 0, 255)
-    out[..., 2]  = np.clip(out[..., 2] - shadow_depth *  8 * t, 0, 255)
+    # 2. Brightness
+    out = warped.astype(np.float32) * factor[..., None]
+
+    # 3. Per-zone colour treatment
+    sh = shadow_acc.clip(0, 1)           # 0-1 valley mask
+    hl = highlight_acc.clip(0, 1)        # 0-1 ridge mask
+
+    # Valley: warm amber/sepia — R rises most, G rises slightly, B drops
+    out[..., 0] = np.clip(out[..., 0] + sh * 32 * t, 0, 255)
+    out[..., 1] = np.clip(out[..., 1] + sh * 10 * t, 0, 255)
+    out[..., 2] = np.clip(out[..., 2] - sh * 26 * t, 0, 255)
+
+    # Ridge: compressed fibres scatter light → near-white with very slight warmth
+    out[..., 0] = np.clip(out[..., 0] + hl * 52 * t, 0, 255)
+    out[..., 1] = np.clip(out[..., 1] + hl * 50 * t, 0, 255)
+    out[..., 2] = np.clip(out[..., 2] + hl * 44 * t, 0, 255)
+
     return _clip(out)
 
 
