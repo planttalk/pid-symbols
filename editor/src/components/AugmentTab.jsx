@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useMemo } from 'react';
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import {
   Box, Typography, Button, Slider, Checkbox, FormControlLabel,
   TextField, Stack, Accordion, AccordionSummary, AccordionDetails,
@@ -341,6 +341,11 @@ export default function AugmentTab() {
   const [batchProgress,    setBatchProgress]    = useState(null); // {current,total,name,saved}
   const [batchResult,      setBatchResult]      = useState(null); // {processed,saved,skipped,errors,...}
   const [exportModalOpen,  setExportModalOpen]  = useState(false);
+  const [batchCancelled,   setBatchCancelled]   = useState(false);
+
+  const previewAbortRef  = useRef(null);
+  const generateAbortRef = useRef(null);
+  const batchReaderRef   = useRef(null);
 
   const batchSources   = useMemo(() => [...new Set(allSymbols.map(s => s.source).filter(Boolean))].sort(), [allSymbols]);
   const batchStandards = useMemo(() => [...new Set(allSymbols.map(s => s.standard).filter(Boolean))].sort(), [allSymbols]);
@@ -397,8 +402,14 @@ export default function AugmentTab() {
     }
   }, [currentPath, size, maxCombo]);
 
+  const handleCancelPreview = useCallback(() => {
+    previewAbortRef.current?.abort();
+  }, []);
+
   const handlePreview = useCallback(async () => {
     if (!currentPath) return;
+    const abort = new AbortController();
+    previewAbortRef.current = abort;
     setPreviewing(true);
     setMsg(null);
     setImages([]);
@@ -406,6 +417,7 @@ export default function AugmentTab() {
       const { augEffects: effects } = useEditorStore.getState();
       const res = await fetch('/api/augment-preview', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
+        signal: abort.signal,
         body: JSON.stringify({
           path:                currentPath,
           effects,
@@ -424,15 +436,22 @@ export default function AugmentTab() {
       setImages(imgs);
       setImagesLabel('Preview (unsaved)');
     } catch (e) {
-      setMsg({ err: '✗ Preview: ' + e.message });
+      if (e.name !== 'AbortError') setMsg({ err: '✗ Preview: ' + e.message });
     } finally {
+      previewAbortRef.current = null;
       setPreviewing(false);
     }
   }, [currentPath, size, count, randPer]);
 
+  const handleCancelBatch = useCallback(async () => {
+    batchReaderRef.current?.cancel();
+    try { await fetch('/api/augment-cancel', { method: 'POST' }); } catch (_) {}
+  }, []);
+
   const handleBatch = useCallback(async (fmt = 'png') => {
     setExportModalOpen(false);
     setBatchRunning(true);
+    setBatchCancelled(false);
     setBatchProgress(null);
     setBatchResult(null);
     try {
@@ -453,6 +472,7 @@ export default function AugmentTab() {
       if (!res.ok) throw new Error(await res.text());
 
       const reader  = res.body.getReader();
+      batchReaderRef.current = reader;
       const decoder = new TextDecoder();
       let buffer = '';
 
@@ -461,7 +481,7 @@ export default function AugmentTab() {
         if (done) break;
         buffer += decoder.decode(value, { stream: true });
         const parts = buffer.split('\n\n');
-        buffer = parts.pop(); // keep last incomplete chunk
+        buffer = parts.pop();
         for (const part of parts) {
           const line = part.trim();
           if (!line.startsWith('data: ')) continue;
@@ -472,17 +492,28 @@ export default function AugmentTab() {
           if (event.type === 'done') {
             setBatchResult(event);
           }
+          if (event.type === 'cancelled') {
+            setBatchCancelled(true);
+            setBatchResult({ saved: event.saved, processed: event.processed, cancelled: true });
+          }
         }
       }
     } catch (e) {
-      setBatchResult({ error: e.message });
+      if (e.name !== 'AbortError') setBatchResult({ error: e.message });
     } finally {
+      batchReaderRef.current = null;
       setBatchRunning(false);
     }
   }, [batchSource, batchStandard, batchOutDir, outDir, size, count, randPer]);
 
+  const handleCancelGenerate = useCallback(() => {
+    generateAbortRef.current?.abort();
+  }, []);
+
   const handleGenerate = useCallback(async () => {
     if (!currentPath) return;
+    const abort = new AbortController();
+    generateAbortRef.current = abort;
     setSaving(true);
     setMsg(null);
     setImages([]);
@@ -490,6 +521,7 @@ export default function AugmentTab() {
       const { augEffects: effects } = useEditorStore.getState();
       const res = await fetch('/api/augment-generate', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
+        signal: abort.signal,
         body: JSON.stringify({
           path:                currentPath,
           effects,
@@ -512,8 +544,9 @@ export default function AugmentTab() {
       setImagesLabel(`Saved → ${data.output_dir}`);
       setMsg({ ok: `✓ ${data.saved} image(s) saved to ${data.output_dir}` });
     } catch (e) {
-      setMsg({ err: '✗ ' + e.message });
+      if (e.name !== 'AbortError') setMsg({ err: '✗ ' + e.message });
     } finally {
+      generateAbortRef.current = null;
       setSaving(false);
     }
   }, [currentPath, count, size, outDir, randPer, setAugImages]);
@@ -524,15 +557,26 @@ export default function AugmentTab() {
 
         {/* Top actions */}
         <Stack direction="row" gap={0.75} sx={{ mb: 0.75 }}>
-          <Button
-            fullWidth
-            startIcon={previewing ? <CircularProgress size={12} /> : <VisibilityIcon sx={{ fontSize: 14 }} />}
-            onClick={handlePreview}
-            disabled={!currentPath || busy}
-            sx={{ fontSize: 11, borderColor: '#4ec9b0', color: '#4ec9b0', borderRadius: '6px' }}
-          >
-            {previewing ? 'Previewing…' : `Preview ${count}`}
-          </Button>
+          {previewing ? (
+            <Button
+              fullWidth
+              startIcon={<CloseIcon sx={{ fontSize: 14 }} />}
+              onClick={handleCancelPreview}
+              sx={{ fontSize: 11, borderColor: '#ef4444', color: '#ef4444', borderRadius: '6px' }}
+            >
+              Cancel Preview
+            </Button>
+          ) : (
+            <Button
+              fullWidth
+              startIcon={<VisibilityIcon sx={{ fontSize: 14 }} />}
+              onClick={handlePreview}
+              disabled={!currentPath || busy}
+              sx={{ fontSize: 11, borderColor: '#4ec9b0', color: '#4ec9b0', borderRadius: '6px' }}
+            >
+              {`Preview ${count}`}
+            </Button>
+          )}
           <Button
             fullWidth
             startIcon={<ShuffleIcon sx={{ fontSize: 14 }} />}
@@ -621,21 +665,27 @@ export default function AugmentTab() {
           inputProps={{ style: { fontSize: 11 } }}
           sx={{ mb: 0.75 }}
         />
-        <Button
-          fullWidth variant="outlined"
-          startIcon={saving ? <CircularProgress size={12} /> : <SaveIcon sx={{ fontSize: 14 }} />}
-          disabled={!currentPath || busy}
-          onClick={handleGenerate}
-          sx={{
-            fontSize: 11,
-            borderColor: '#4ec994',
-            color: '#4ec994',
-            borderRadius: '6px',
-            mb: 0.5,
-          }}
-        >
-          {saving ? `Saving ${count} image(s)…` : `Generate & Save ${count}`}
-        </Button>
+        <Stack direction="row" gap={0.75} sx={{ mb: 0.5 }}>
+          <Button
+            fullWidth variant="outlined"
+            startIcon={saving ? <CircularProgress size={12} /> : <SaveIcon sx={{ fontSize: 14 }} />}
+            disabled={!currentPath || (busy && !saving)}
+            onClick={saving ? undefined : handleGenerate}
+            sx={{ fontSize: 11, borderColor: '#4ec994', color: '#4ec994', borderRadius: '6px' }}
+          >
+            {saving ? `Saving ${count} image(s)…` : `Generate & Save ${count}`}
+          </Button>
+          {saving && (
+            <Button
+              variant="outlined"
+              startIcon={<CloseIcon sx={{ fontSize: 14 }} />}
+              onClick={handleCancelGenerate}
+              sx={{ fontSize: 11, borderColor: '#ef4444', color: '#ef4444', borderRadius: '6px', flexShrink: 0 }}
+            >
+              Cancel
+            </Button>
+          )}
+        </Stack>
 
         {msg && (
           <Alert severity={msg.ok ? 'success' : 'error'} sx={{ py: 0, fontSize: 11, mb: 0.5 }}>
@@ -727,12 +777,23 @@ export default function AugmentTab() {
                     '& .MuiLinearProgress-bar': { bgcolor: '#ff9800' },
                   }}
                 />
-                <Typography sx={{ fontSize: 10, color: 'text.disabled', fontFamily: '"JetBrains Mono", "Cascadia Code", Consolas, monospace' }} noWrap>
-                  {batchProgress.name}
-                  {batchProgress.saved != null && (
-                    <> &nbsp;·&nbsp; {batchProgress.saved} saved</>
-                  )}
-                </Typography>
+                <Stack direction="row" alignItems="center" justifyContent="space-between" gap={1}>
+                  <Typography sx={{ fontSize: 10, color: 'text.disabled', fontFamily: '"JetBrains Mono", "Cascadia Code", Consolas, monospace', flex: 1, minWidth: 0 }} noWrap>
+                    {batchProgress.name}
+                    {batchProgress.saved != null && (
+                      <> &nbsp;·&nbsp; {batchProgress.saved} saved</>
+                    )}
+                  </Typography>
+                  <Button
+                    size="small"
+                    startIcon={<CloseIcon sx={{ fontSize: 12 }} />}
+                    onClick={handleCancelBatch}
+                    sx={{ fontSize: 10, borderColor: '#ef4444', color: '#ef4444', borderRadius: '5px', flexShrink: 0, py: '2px', px: '8px', minWidth: 0 }}
+                    variant="outlined"
+                  >
+                    Cancel
+                  </Button>
+                </Stack>
               </Box>
             )}
 
@@ -740,15 +801,19 @@ export default function AugmentTab() {
             {batchResult && !batchRunning && (
               batchResult.error
                 ? <Alert severity="error" sx={{ py: 0, fontSize: 11 }}>{batchResult.error}</Alert>
-                : <Alert severity={batchResult.errors > 0 ? 'warning' : 'success'} sx={{ py: 0, fontSize: 11 }}>
-                    ✓ {batchResult.saved} image{batchResult.saved !== 1 ? 's' : ''} saved
-                    {batchResult.format === 'yolo' && batchResult.class_count != null && (
-                      <> · {batchResult.class_count} class{batchResult.class_count !== 1 ? 'es' : ''} · data.yaml</>
-                    )}
-                    {batchResult.skipped > 0 && `, ${batchResult.skipped} skipped`}
-                    {batchResult.errors  > 0 && `, ${batchResult.errors} error${batchResult.errors !== 1 ? 's' : ''}`}
-                    &nbsp;→&nbsp;{batchResult.output_dir}
-                  </Alert>
+                : batchResult.cancelled
+                  ? <Alert severity="warning" sx={{ py: 0, fontSize: 11 }}>
+                      Cancelled — {batchResult.saved ?? 0} image{batchResult.saved !== 1 ? 's' : ''} saved before stop
+                    </Alert>
+                  : <Alert severity={batchResult.errors > 0 ? 'warning' : 'success'} sx={{ py: 0, fontSize: 11 }}>
+                      ✓ {batchResult.saved} image{batchResult.saved !== 1 ? 's' : ''} saved
+                      {batchResult.format === 'yolo' && batchResult.class_count != null && (
+                        <> · {batchResult.class_count} class{batchResult.class_count !== 1 ? 'es' : ''} · data.yaml</>
+                      )}
+                      {batchResult.skipped > 0 && `, ${batchResult.skipped} skipped`}
+                      {batchResult.errors  > 0 && `, ${batchResult.errors} error${batchResult.errors !== 1 ? 's' : ''}`}
+                      &nbsp;→&nbsp;{batchResult.output_dir}
+                    </Alert>
             )}
 
           </AccordionDetails>

@@ -28,6 +28,9 @@ import webbrowser
 # globals set in main()
 SYMBOLS_ROOT: pathlib.Path
 SERVER_PORT: int
+
+# Single flag shared across all threads — set by /api/augment-cancel to stop the running batch
+_batch_cancel = threading.Event()
 _EDITOR_ROOT = pathlib.Path(__file__).parent / "editor"
 # Serve from editor/dist/ (React build) when available, otherwise editor/ (legacy)
 EDITOR_DIR = _EDITOR_ROOT / "dist" if (_EDITOR_ROOT / "dist").is_dir() else _EDITOR_ROOT
@@ -197,6 +200,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
         elif p == "/api/augment-batch":
             self._sse_stream(_augment_batch(body))
+
+        elif p == "/api/augment-cancel":
+            _batch_cancel.set()
+            self._json({"ok": True})
 
         elif p == "/api/flag":
             ok, msg = _patch_meta(body.get("path"), {"flag": body.get("flag")})
@@ -823,6 +830,7 @@ def _augment_batch(body: dict):
                "skipped": 0, "errors": 0, "output_dir": out_str, "format": fmt}
         return
 
+    _batch_cancel.clear()
     yield {"type": "start", "total": total}
 
     try:
@@ -869,6 +877,11 @@ def _augment_batch(body: dict):
     processed = saved = skipped = errors = 0
 
     for i, sym in enumerate(symbols):
+        if _batch_cancel.is_set():
+            yield {"type": "cancelled", "processed": processed, "saved": saved,
+                   "skipped": skipped + (total - i), "errors": errors}
+            return
+
         sym_id = sym["path"]
         base   = _safe_path(sym_id)
         name   = sym.get("name", sym_id)

@@ -899,6 +899,7 @@ def wrinkle(img: np.ndarray, intensity: float) -> np.ndarray:
     shadow_acc    = np.zeros((H, W), dtype=np.float32)   # valley darkness
     highlight_acc = np.zeros((H, W), dtype=np.float32)   # ridge brightness
     lift_acc      = np.zeros((H, W), dtype=np.float32)   # convex lift
+    halo_acc      = np.zeros((H, W), dtype=np.float32)   # warm colour bleed around crease
     disp_x        = np.zeros((H, W), dtype=np.float32)
     disp_y        = np.zeros((H, W), dtype=np.float32)
 
@@ -930,9 +931,14 @@ def wrinkle(img: np.ndarray, intensity: float) -> np.ndarray:
         highlight = np.exp(-(dist ** 2)                / (2 * sigma_hi ** 2))
         lift      = np.exp(-(np.maximum(dist, 0) ** 2) / (2 * sigma_lift ** 2))
 
+        # Halo: medium-width Gaussian centred on crease covering both sides
+        sigma_halo = crease_w * float(rng.uniform(2.2, 4.5))
+        halo       = np.exp(-(dist ** 2) / (2 * sigma_halo ** 2))
+
         shadow_acc    += shadow    * 0.72 * t * strength
         highlight_acc += highlight * 0.42 * t * strength
         lift_acc      += lift      * 0.13 * t * strength
+        halo_acc      += halo      * 0.60 * t * strength
 
         # Geometric warp — convergent push toward crease from both sides
         sigma_warp = crease_w * 4.5
@@ -973,18 +979,30 @@ def wrinkle(img: np.ndarray, intensity: float) -> np.ndarray:
     out = warped.astype(np.float32) * factor[..., None]
 
     # 3. Per-zone colour treatment
-    sh = shadow_acc.clip(0, 1)           # 0-1 valley mask
-    hl = highlight_acc.clip(0, 1)        # 0-1 ridge mask
+    sh   = shadow_acc.clip(0, 1)          # 0-1 valley mask
+    hl   = highlight_acc.clip(0, 1)       # 0-1 ridge mask
+    lf   = lift_acc.clip(0, 1)            # 0-1 convex lift mask
+    halo = halo_acc.clip(0, 1)            # 0-1 warm colour bleed mask
 
-    # Valley: warm amber/sepia — R rises most, G rises slightly, B drops
-    out[..., 0] = np.clip(out[..., 0] + sh * 32 * t, 0, 255)
-    out[..., 1] = np.clip(out[..., 1] + sh * 10 * t, 0, 255)
-    out[..., 2] = np.clip(out[..., 2] - sh * 26 * t, 0, 255)
+    # Halo: broad warm-orange spread around the crease (applied first, lowest layer)
+    out[..., 0] = np.clip(out[..., 0] + halo * 26 * t, 0, 255)
+    out[..., 1] = np.clip(out[..., 1] + halo * 12 * t, 0, 255)
+    out[..., 2] = np.clip(out[..., 2] - halo * 10 * t, 0, 255)
+
+    # Valley: deep warm amber/sepia — R rises strongly, G slightly, B drops
+    out[..., 0] = np.clip(out[..., 0] + sh * 48 * t, 0, 255)
+    out[..., 1] = np.clip(out[..., 1] + sh * 14 * t, 0, 255)
+    out[..., 2] = np.clip(out[..., 2] - sh * 38 * t, 0, 255)
 
     # Ridge: compressed fibres scatter light → near-white with very slight warmth
-    out[..., 0] = np.clip(out[..., 0] + hl * 52 * t, 0, 255)
-    out[..., 1] = np.clip(out[..., 1] + hl * 50 * t, 0, 255)
-    out[..., 2] = np.clip(out[..., 2] + hl * 44 * t, 0, 255)
+    out[..., 0] = np.clip(out[..., 0] + hl * 55 * t, 0, 255)
+    out[..., 1] = np.clip(out[..., 1] + hl * 52 * t, 0, 255)
+    out[..., 2] = np.clip(out[..., 2] + hl * 46 * t, 0, 255)
+
+    # Convex lift: subtle cool tint (ambient light temperature shift)
+    out[..., 0] = np.clip(out[..., 0] - lf *  5 * t, 0, 255)
+    out[..., 1] = np.clip(out[..., 1] + lf *  3 * t, 0, 255)
+    out[..., 2] = np.clip(out[..., 2] + lf * 12 * t, 0, 255)
 
     return _clip(out)
 
