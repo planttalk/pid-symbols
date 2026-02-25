@@ -36,7 +36,7 @@ _EDITOR_ROOT = pathlib.Path(__file__).parent / "editor"
 EDITOR_DIR = _EDITOR_ROOT / "dist" if (_EDITOR_ROOT / "dist").is_dir() else _EDITOR_ROOT
 
 _UNREALISTIC_REPORTS_FILE = pathlib.Path(__file__).parent / "unrealistic_reports.json"
-_reports_lock = threading.Lock()
+_reports_lock = threading.RLock()
 
 # port colour map (shared by _generate_debug)
 _PORT_COLORS: dict[str, str] = {

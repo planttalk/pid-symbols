@@ -1,9 +1,11 @@
 import { Box, Tabs, Tab } from '@mui/material';
 import TuneIcon from '@mui/icons-material/Tune';
 import AutoFixHighIcon from '@mui/icons-material/AutoFixHigh';
+import FlagIcon from '@mui/icons-material/Flag';
 import { useEditorStore } from '../store';
 import PortsTab from './PortsTab';
 import AugmentTab from './AugmentTab';
+import ReportsTab from './ReportsTab';
 
 export default function RightPanel() {
   const { activeTab, setActiveTab, currentPath, previewAugment } = useEditorStore();
@@ -85,6 +87,24 @@ export default function RightPanel() {
                 },
               }}
             />
+            <Tab
+              label="Reports"
+              icon={<FlagIcon sx={{ fontSize: 13 }} />}
+              iconPosition="start"
+              sx={{
+                flex: 1,
+                minHeight: 32,
+                py: 0.5,
+                px: 1,
+                borderRadius: '6px',
+                gap: 0.5,
+                transition: 'background 0.15s ease',
+                '&.Mui-selected': {
+                  bgcolor: 'rgba(239,68,68,0.15)',
+                  color: '#ef4444',
+                },
+              }}
+            />
           </Tabs>
         </Box>
       </Box>
@@ -92,6 +112,7 @@ export default function RightPanel() {
       <Box sx={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
         {activeTab === 0 && <PortsTab />}
         {activeTab === 1 && <AugmentTab />}
+        {activeTab === 2 && <ReportsTab />}
       </Box>
     </Box>
   );

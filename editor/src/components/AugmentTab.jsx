@@ -18,8 +18,6 @@ import GridViewIcon         from '@mui/icons-material/GridView';
 import PhotoLibraryIcon     from '@mui/icons-material/PhotoLibrary';
 import AccountTreeIcon      from '@mui/icons-material/AccountTree';
 import FlagIcon             from '@mui/icons-material/Flag';
-import RefreshIcon          from '@mui/icons-material/Refresh';
-import DeleteOutlineIcon    from '@mui/icons-material/DeleteOutline';
 import { useEditorStore } from '../store';
 import { EFFECT_GROUPS, ALL_EFFECT_NAMES } from '../constants';
 
@@ -382,145 +380,6 @@ function SmartGrid({ images, label, onClear, currentPath, source, onFlagged }) {
   );
 }
 
-// ── Reports panel ─────────────────────────────────────────────────────────────
-function ReportsPanel({ refreshKey }) {
-  const [reports, setReports] = useState([]);
-
-  const fetchReports = useCallback(async () => {
-    try {
-      const res = await fetch('/api/flag-reports');
-      if (!res.ok) return;
-      const data = await res.json();
-      const sorted = [...(data.reports || [])].sort((a, b) => b.id.localeCompare(a.id));
-      setReports(sorted);
-    } catch (_) {}
-  }, []);
-
-  useEffect(() => { fetchReports(); }, [fetchReports, refreshKey]);
-
-  const handleDelete = useCallback(async (id) => {
-    try {
-      const res = await fetch('/api/flag-report-delete', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id }),
-      });
-      if (res.ok) setReports(prev => prev.filter(r => r.id !== id));
-    } catch (_) {}
-  }, []);
-
-  const handleClearAll = useCallback(async () => {
-    try {
-      const res = await fetch('/api/flag-reports-clear', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({}),
-      });
-      if (res.ok) setReports([]);
-    } catch (_) {}
-  }, []);
-
-  return (
-    <Accordion disableGutters defaultExpanded={false} sx={{ mt: 0.5 }}>
-      <AccordionSummary expandIcon={<ExpandMoreIcon sx={{ fontSize: 14 }} />}>
-        <Stack direction="row" alignItems="center" gap={1} sx={{ flex: 1, mr: 1 }}>
-          <FlagIcon sx={{ fontSize: 13, color: '#ef4444' }} />
-          <Typography sx={{ fontSize: 11, color: '#ef4444' }}>
-            Effect Reports
-            {reports.length > 0 && (
-              <span style={{ color: 'rgba(239,68,68,0.7)', marginLeft: 4 }}>({reports.length})</span>
-            )}
-          </Typography>
-          <Box sx={{ flex: 1 }} />
-          {reports.length > 0 && (
-            <Tooltip title="Clear all reports" disableInteractive>
-              <IconButton
-                size="small"
-                onClick={e => { e.stopPropagation(); handleClearAll(); }}
-                sx={{ color: 'rgba(239,68,68,0.6)', '&:hover': { color: '#ef4444' }, p: '2px' }}
-              >
-                <DeleteOutlineIcon sx={{ fontSize: 13 }} />
-              </IconButton>
-            </Tooltip>
-          )}
-          <Tooltip title="Refresh" disableInteractive>
-            <IconButton
-              size="small"
-              onClick={e => { e.stopPropagation(); fetchReports(); }}
-              sx={{ color: 'text.disabled', '&:hover': { color: 'text.secondary' }, p: '2px' }}
-            >
-              <RefreshIcon sx={{ fontSize: 13 }} />
-            </IconButton>
-          </Tooltip>
-        </Stack>
-      </AccordionSummary>
-      <AccordionDetails sx={{ px: 1, pb: 1, pt: 0 }}>
-        {reports.length === 0 ? (
-          <Typography sx={{ fontSize: 10, color: 'text.disabled', textAlign: 'center', py: 1 }}>
-            No flagged combos yet
-          </Typography>
-        ) : (
-          <Stack gap={0.75}>
-            {reports.map(r => {
-              const stem = r.symbol ? r.symbol.split('/').pop() : '—';
-              const effectEntries = Object.entries(r.effects || {}).sort(([, a], [, b]) => b - a);
-              return (
-                <Box key={r.id} sx={{
-                  border: '1px solid rgba(239,68,68,0.2)',
-                  borderRadius: 1, px: 1, py: 0.75,
-                  bgcolor: 'rgba(239,68,68,0.04)',
-                }}>
-                  <Stack direction="row" alignItems="flex-start" justifyContent="space-between" gap={0.5}>
-                    <Box sx={{ flex: 1, minWidth: 0 }}>
-                      <Stack direction="row" alignItems="center" gap={0.5} sx={{ mb: 0.25 }}>
-                        <Typography sx={{ fontSize: 10, color: 'text.primary', fontFamily: 'monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          {stem}
-                        </Typography>
-                        <Typography sx={{ fontSize: 9, color: 'text.disabled' }}>
-                          {r.label}
-                        </Typography>
-                        <Box sx={{
-                          fontSize: 8, color: 'rgba(239,68,68,0.6)',
-                          border: '1px solid rgba(239,68,68,0.25)', borderRadius: 0.5,
-                          px: '3px', py: '1px', flexShrink: 0,
-                        }}>
-                          {r.source || 'preview'}
-                        </Box>
-                      </Stack>
-                      <Typography sx={{ fontSize: 9, color: 'text.disabled', mb: 0.5 }}>
-                        {r.timestamp}
-                      </Typography>
-                      <Stack direction="row" flexWrap="wrap" gap={0.4}>
-                        {effectEntries.map(([name, val]) => (
-                          <Box key={name} sx={{
-                            bgcolor: 'rgba(239,68,68,0.10)',
-                            border: '1px solid rgba(239,68,68,0.25)',
-                            borderRadius: 0.5, px: 0.6, py: '1px',
-                            fontSize: 9, color: 'rgba(255,255,255,0.65)',
-                            fontFamily: '"JetBrains Mono", "Cascadia Code", Consolas, monospace',
-                            whiteSpace: 'nowrap',
-                          }}>
-                            {name}&nbsp;<span style={{ color: '#f87171' }}>{Math.round(val * 100)}%</span>
-                          </Box>
-                        ))}
-                      </Stack>
-                    </Box>
-                    <IconButton
-                      size="small"
-                      onClick={() => handleDelete(r.id)}
-                      sx={{ color: 'text.disabled', '&:hover': { color: '#ef4444' }, p: '2px', flexShrink: 0 }}
-                    >
-                      <CloseIcon sx={{ fontSize: 12 }} />
-                    </IconButton>
-                  </Stack>
-                </Box>
-              );
-            })}
-          </Stack>
-        )}
-      </AccordionDetails>
-    </Accordion>
-  );
-}
-
 // ── Main AugmentTab ────────────────────────────────────────────────────────────
 export default function AugmentTab() {
   const {
@@ -542,8 +401,7 @@ export default function AugmentTab() {
   const [comboImages,  setComboImages]  = useState([]);
   const [comboMsg,     setComboMsg]     = useState(null);
   const [maxCombo,     setMaxCombo]     = useState(3);
-  const [imagesSource,      setImagesSource]      = useState('preview');
-  const [reportRefreshKey,  setReportRefreshKey]  = useState(0);
+  const [imagesSource,  setImagesSource]  = useState('preview');
 
   // ── Batch state ──────────────────────────────────────────────────────────────
   const [batchSource,      setBatchSource]      = useState('');
@@ -1046,7 +904,6 @@ export default function AugmentTab() {
             label={imagesLabel}
             currentPath={currentPath}
             source={imagesSource}
-            onFlagged={() => setReportRefreshKey(k => k + 1)}
           />
         )}
 
@@ -1067,12 +924,8 @@ export default function AugmentTab() {
             onClear={() => { setComboImages([]); setComboMsg(null); }}
             currentPath={currentPath}
             source="combo"
-            onFlagged={() => setReportRefreshKey(k => k + 1)}
           />
         )}
-
-        <Divider sx={{ my: 1 }} />
-        <ReportsPanel refreshKey={reportRefreshKey} />
 
       </Box>
 
