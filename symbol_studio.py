@@ -38,6 +38,9 @@ EDITOR_DIR = _EDITOR_ROOT / "dist" if (_EDITOR_ROOT / "dist").is_dir() else _EDI
 _UNREALISTIC_REPORTS_FILE = pathlib.Path(__file__).parent / "unrealistic_reports.json"
 _reports_lock = threading.RLock()
 
+# Effects that are geometric transforms — excluded from intensity caps.
+_GEOM_EFFECTS = frozenset({"mirror_h", "mirror_v", "rot_90", "rot_180", "rot_270"})
+
 # port colour map (shared by _generate_debug)
 _PORT_COLORS: dict[str, str] = {
     "in":        "#2196F3",
@@ -681,6 +684,39 @@ def _flag_reports_clear() -> tuple[int, str]:
     return count, ""
 
 
+def _compute_effect_caps() -> dict[str, float]:
+    """Derive per-effect intensity caps from flagged unrealistic reports.
+
+    For each non-geometry effect that appears in any flagged report the cap is
+    set to (minimum flagged intensity - a small margin), ensuring random
+    generation stays below the level users have flagged as unrealistic.
+    Returns an empty dict when there are no reports.
+    """
+    data = _load_reports()
+    reports = data.get("reports", [])
+    if not reports:
+        return {}
+
+    # Collect minimum flagged intensity per effect (ignore geom effects).
+    mins: dict[str, float] = {}
+    for entry in reports:
+        for name, intensity in (entry.get("effects") or {}).items():
+            if name in _GEOM_EFFECTS:
+                continue
+            try:
+                v = float(intensity)
+            except (TypeError, ValueError):
+                continue
+            if v <= 0.0:
+                continue
+            if name not in mins or v < mins[name]:
+                mins[name] = v
+
+    # Cap = min_flagged_intensity * 0.85 (15 % safety margin), floored at 0.05.
+    caps = {name: max(0.05, round(v * 0.85, 3)) for name, v in mins.items()}
+    return caps
+
+
 def _random_geom(arr, rng=None):
     """Apply random mirror / rotation using PIL. Returns (new_arr, geom_dict).
 
@@ -761,15 +797,23 @@ def _augment_preview(body: dict) -> tuple[dict | None, str]:
             img = img.resize((size, size), Image.LANCZOS)
         arr = np.array(img, dtype=np.uint8)
 
+        effect_caps = _compute_effect_caps()
+
         images_out: list[dict] = []
         for _ in range(count):
             if randomize_per:
                 n      = _random.randint(3, 7)
                 picked = _random.sample(_APPLY_ORDER, min(n, len(_APPLY_ORDER)))
-                varied = {name: round(_random.uniform(0.15, 0.65), 2) for name in picked}
+                varied = {
+                    name: round(min(_random.uniform(0.15, 0.65), effect_caps.get(name, 1.0)), 2)
+                    for name in picked
+                }
             elif effects:
                 varied = {
-                    name: round(float(np.clip(intensity * _random.uniform(0.7, 1.3), 0.0, 1.0)), 3)
+                    name: round(float(np.clip(
+                        intensity * _random.uniform(0.7, 1.3),
+                        0.0, effect_caps.get(name, 1.0),
+                    )), 3)
                     for name, intensity in effects.items() if intensity > 0.0
                 }
             else:
@@ -838,15 +882,22 @@ def _augment_generate(body: dict) -> tuple[dict | None, str]:
         )
         stem       = base.stem
         images_b64 = []
+        effect_caps = _compute_effect_caps()
 
         for i in range(count):
             if randomize_per:
                 n      = _random.randint(3, 7)
                 picked = _random.sample(_APPLY_ORDER, min(n, len(_APPLY_ORDER)))
-                varied = {name: round(_random.uniform(0.15, 0.65), 2) for name in picked}
+                varied = {
+                    name: round(min(_random.uniform(0.15, 0.65), effect_caps.get(name, 1.0)), 2)
+                    for name in picked
+                }
             else:
                 varied = {
-                    name: float(np.clip(intensity * _random.uniform(0.7, 1.3), 0.0, 1.0))
+                    name: float(np.clip(
+                        intensity * _random.uniform(0.7, 1.3),
+                        0.0, effect_caps.get(name, 1.0),
+                    ))
                     for name, intensity in effects.items()
                     if intensity > 0.0
                 }
@@ -978,6 +1029,7 @@ def _augment_batch(body: dict):
         n_classes = 0
 
     processed = saved = skipped = errors = 0
+    effect_caps = _compute_effect_caps()
 
     for i, sym in enumerate(symbols):
         if _batch_cancel.is_set():
@@ -1019,10 +1071,16 @@ def _augment_batch(body: dict):
                 if rand_per:
                     n      = _random.randint(3, 7)
                     picked = _random.sample(_APPLY_ORDER, min(n, len(_APPLY_ORDER)))
-                    varied = {nm: round(_random.uniform(0.15, 0.65), 2) for nm in picked}
+                    varied = {
+                        nm: round(min(_random.uniform(0.15, 0.65), effect_caps.get(nm, 1.0)), 2)
+                        for nm in picked
+                    }
                 elif effects:
                     varied = {
-                        nm: float(np.clip(intensity * _random.uniform(0.7, 1.3), 0.0, 1.0))
+                        nm: float(np.clip(
+                            intensity * _random.uniform(0.7, 1.3),
+                            0.0, effect_caps.get(nm, 1.0),
+                        ))
                         for nm, intensity in effects.items() if intensity > 0.0
                     }
                 else:
