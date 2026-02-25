@@ -717,6 +717,41 @@ def _compute_effect_caps() -> dict[str, float]:
     return caps
 
 
+def _compute_flagged_combos() -> list[frozenset]:
+    """Return each flagged report as a frozenset of non-geom effect names.
+
+    Used to avoid re-generating combinations that users have marked unrealistic.
+    """
+    data = _load_reports()
+    combos: list[frozenset] = []
+    for entry in data.get("reports", []):
+        names = frozenset(
+            k for k, v in (entry.get("effects") or {}).items()
+            if k not in _GEOM_EFFECTS and float(v) > 0.0
+        )
+        if names:
+            combos.append(names)
+    return combos
+
+
+def _combo_overlaps_flagged(
+    picked: set | frozenset,
+    flagged_combos: list[frozenset],
+    threshold: float = 0.70,
+) -> bool:
+    """Return True if *picked* shares ≥ threshold fraction of any flagged combo.
+
+    A 70 % overlap means: if 7 out of 10 effects from a flagged combo appear in
+    the proposed set, the combo is considered too similar and should be rejected.
+    Returns False immediately when flagged_combos is empty (no restriction).
+    """
+    ps = frozenset(picked)
+    for fc in flagged_combos:
+        if fc and len(fc & ps) / len(fc) >= threshold:
+            return True
+    return False
+
+
 def _random_geom(arr, rng=None):
     """Apply random mirror / rotation using PIL. Returns (new_arr, geom_dict).
 
@@ -797,13 +832,17 @@ def _augment_preview(body: dict) -> tuple[dict | None, str]:
             img = img.resize((size, size), Image.LANCZOS)
         arr = np.array(img, dtype=np.uint8)
 
-        effect_caps = _compute_effect_caps()
+        effect_caps    = _compute_effect_caps()
+        flagged_combos = _compute_flagged_combos()
 
         images_out: list[dict] = []
         for _ in range(count):
             if randomize_per:
-                n      = _random.randint(3, 7)
-                picked = _random.sample(_APPLY_ORDER, min(n, len(_APPLY_ORDER)))
+                for _attempt in range(12):
+                    n      = _random.randint(3, 7)
+                    picked = _random.sample(_APPLY_ORDER, min(n, len(_APPLY_ORDER)))
+                    if not _combo_overlaps_flagged(picked, flagged_combos):
+                        break
                 varied = {
                     name: round(min(_random.uniform(0.15, 0.65), effect_caps.get(name, 1.0)), 2)
                     for name in picked
@@ -880,14 +919,18 @@ def _augment_generate(body: dict) -> tuple[dict | None, str]:
         base_arr = np.array(
             Image.open(_io.BytesIO(png_bytes)).convert("RGB"), dtype=np.uint8
         )
-        stem       = base.stem
-        images_b64 = []
-        effect_caps = _compute_effect_caps()
+        stem           = base.stem
+        images_b64     = []
+        effect_caps    = _compute_effect_caps()
+        flagged_combos = _compute_flagged_combos()
 
         for i in range(count):
             if randomize_per:
-                n      = _random.randint(3, 7)
-                picked = _random.sample(_APPLY_ORDER, min(n, len(_APPLY_ORDER)))
+                for _attempt in range(12):
+                    n      = _random.randint(3, 7)
+                    picked = _random.sample(_APPLY_ORDER, min(n, len(_APPLY_ORDER)))
+                    if not _combo_overlaps_flagged(picked, flagged_combos):
+                        break
                 varied = {
                     name: round(min(_random.uniform(0.15, 0.65), effect_caps.get(name, 1.0)), 2)
                     for name in picked
@@ -1029,7 +1072,8 @@ def _augment_batch(body: dict):
         n_classes = 0
 
     processed = saved = skipped = errors = 0
-    effect_caps = _compute_effect_caps()
+    effect_caps    = _compute_effect_caps()
+    flagged_combos = _compute_flagged_combos()
 
     for i, sym in enumerate(symbols):
         if _batch_cancel.is_set():
@@ -1069,8 +1113,11 @@ def _augment_batch(body: dict):
 
             for j in range(count):
                 if rand_per:
-                    n      = _random.randint(3, 7)
-                    picked = _random.sample(_APPLY_ORDER, min(n, len(_APPLY_ORDER)))
+                    for _attempt in range(12):
+                        n      = _random.randint(3, 7)
+                        picked = _random.sample(_APPLY_ORDER, min(n, len(_APPLY_ORDER)))
+                        if not _combo_overlaps_flagged(picked, flagged_combos):
+                            break
                     varied = {
                         nm: round(min(_random.uniform(0.15, 0.65), effect_caps.get(nm, 1.0)), 2)
                         for nm in picked
