@@ -627,7 +627,7 @@ def _flag_report_add(body: dict) -> tuple[dict | None, str]:
     """Append a new unrealistic-flag report entry; return the entry on success."""
     import time as _time
     effects = body.get("effects")
-    if not effects:
+    if effects is None:
         return None, "missing effects"
     symbol  = body.get("symbol", "")
     label   = body.get("label", "")

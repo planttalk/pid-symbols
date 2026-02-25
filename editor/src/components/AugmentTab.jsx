@@ -90,7 +90,6 @@ function EffectGroup({ group, augEffects, onChange, onToggle }) {
 
 // Lightbox modal
 function Lightbox({ images, idx, onClose, onGoto, flagged, onFlag }) {
-  console.log('Lightbox rendered with idx:', idx, 'flagged:', flagged, 'onFlag:', typeof onFlag);
   const img = images[idx];
 
   useEffect(() => {
@@ -172,7 +171,7 @@ function Lightbox({ images, idx, onClose, onGoto, flagged, onFlag }) {
           {onFlag && (
             <button
               type="button"
-              onClick={e => { e.stopPropagation(); console.log('Button clicked'); onFlag(idx); }}
+              onClick={e => { e.stopPropagation(); onFlag(idx); }}
               style={{
                 marginTop: 8,
                 fontSize: 10,
@@ -225,13 +224,14 @@ function SmartGrid({ images, label, onClear, currentPath, source, onFlagged }) {
   useEffect(() => { setPage(0); setLightboxIdx(null); setFlagged(new Set()); }, [images]);
 
   const handleFlag = useCallback(async (absIdx) => {
-    console.log('handleFlag called with', absIdx, 'flagged currently has', flagged);
     const img = images[absIdx];
+    if (!img) return;
     if (flagged.has(absIdx)) {
-      console.log('Already flagged, removing');
       setFlagged(prev => { const s = new Set(prev); s.delete(absIdx); return s; });
       return;
     }
+    // Optimistic update — flip to red immediately so the user sees feedback
+    setFlagged(prev => new Set([...prev, absIdx]));
     try {
       const res = await fetch('/api/flag-report', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -242,12 +242,15 @@ function SmartGrid({ images, label, onClear, currentPath, source, onFlagged }) {
           source:  source || 'preview',
         }),
       });
-      console.log('API response:', res.status);
-      if (!res.ok) throw new Error(await res.text());
-      setFlagged(prev => new Set([...prev, absIdx]));
+      if (!res.ok) {
+        // Revert on server error
+        setFlagged(prev => { const s = new Set(prev); s.delete(absIdx); return s; });
+        return;
+      }
       onFlagged?.();
-    } catch (e) {
-      console.error('flag-report failed', e);
+    } catch (_) {
+      // Revert on network error
+      setFlagged(prev => { const s = new Set(prev); s.delete(absIdx); return s; });
     }
   }, [images, flagged, currentPath, source, onFlagged]);
 
