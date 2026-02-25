@@ -1,8 +1,7 @@
-import { useState } from 'react';
 import {
   Box, Typography, Button, Divider, RadioGroup, FormControlLabel, Radio,
   Checkbox, TextField, List, ListItemButton, ListItemText, IconButton,
-  Stack, Chip, Alert,
+  Stack, Chip,
 } from '@mui/material';
 import LockIcon from '@mui/icons-material/Lock';
 import LockOpenIcon from '@mui/icons-material/LockOpen';
@@ -190,14 +189,12 @@ function FieldEditor() {
 
 // ── Main Ports tab ────────────────────────────────────────────────────────────
 export default function PortsTab() {
-  const [exportDir, setExportDir] = useState('');
   const {
     currentPath, symbolMeta, ports, selIdx, selection, markerMode, axisLock,
     showGrid, snapGrid, gridSize, midState, matchMode,
     setMarkerMode, setAxisLock, setShowGrid, setSnapGrid, setGridSize,
-    saveSymbol, nextSymbol, toggleComplete, generateDebug, exportCompleted,
     addPort, deleteSelected, setMidState, setMatchMode,
-    saveMsg, exportMsg, portType, snapVal, selectPort, updatePort,
+    portType, snapVal, selectPort, updatePort,
   } = useEditorStore();
 
   const canDelete = selection.size > 0 || selIdx !== null;
@@ -317,84 +314,6 @@ export default function PortsTab() {
 
       <FieldEditor />
 
-      <Divider />
-
-      {/* Save / Next / Complete / Debug */}
-      <SectionLabel>Export</SectionLabel>
-      <Stack gap={0.5} sx={{ mt: 0.5 }}>
-        <Button
-          fullWidth
-          variant="contained"
-          onClick={() => saveSymbol()}
-          sx={{
-            fontSize: 11,
-            bgcolor: 'primary.main',
-            '&:hover': { bgcolor: 'primary.dark' },
-          }}
-        >
-          Save JSON
-        </Button>
-        <Button
-          fullWidth
-          variant="outlined"
-          color="success"
-          disabled={!currentPath}
-          onClick={nextSymbol}
-          sx={{ fontSize: 11 }}
-        >
-          Save &amp; Next →
-        </Button>
-        <Button
-          fullWidth
-          variant="outlined"
-          color={symbolMeta?.completed ? 'success' : 'inherit'}
-          disabled={!currentPath}
-          onClick={toggleComplete}
-          sx={{ fontSize: 11 }}
-        >
-          {symbolMeta?.completed ? '✓ Completed' : '✓ Mark Complete'}
-        </Button>
-        <Button
-          fullWidth
-          variant="outlined"
-          onClick={generateDebug}
-          sx={{ fontSize: 11 }}
-        >
-          Generate _debug.svg
-        </Button>
-        {saveMsg && (
-          <Alert severity={saveMsg.ok ? 'success' : 'error'} sx={{ py: 0, fontSize: 11 }}>
-            {saveMsg.ok || saveMsg.err}
-          </Alert>
-        )}
-      </Stack>
-
-      <Divider />
-
-      {/* Export completed */}
-      <SectionLabel>Export Completed</SectionLabel>
-      <TextField
-        fullWidth
-        size="small"
-        placeholder="output folder (default: ./completed)"
-        value={exportDir}
-        onChange={e => setExportDir(e.target.value)}
-        sx={{ mt: 0.5, mb: 0.5 }}
-        inputProps={{ style: { fontSize: 11 } }}
-      />
-      <Button
-        fullWidth
-        variant="outlined"
-        onClick={() => exportCompleted(exportDir)}
-        sx={{ fontSize: 11, borderColor: '#9944ee', color: '#cc88ff' }}
-      >
-        Export Completed
-      </Button>
-      {exportMsg && (
-        <Alert severity={exportMsg.ok ? 'success' : 'error'} sx={{ mt: 0.5, py: 0, fontSize: 11 }}>
-          {exportMsg.ok || exportMsg.err}
-        </Alert>
-      )}
     </Box>
   );
 }

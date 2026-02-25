@@ -2,10 +2,12 @@ import { Box, Tabs, Tab } from '@mui/material';
 import TuneIcon from '@mui/icons-material/Tune';
 import AutoFixHighIcon from '@mui/icons-material/AutoFixHigh';
 import FlagIcon from '@mui/icons-material/Flag';
+import SaveAltIcon from '@mui/icons-material/SaveAlt';
 import { useEditorStore } from '../store';
 import PortsTab from './PortsTab';
 import AugmentTab from './AugmentTab';
 import ReportsTab from './ReportsTab';
+import ExportTab from './ExportTab';
 
 export default function RightPanel() {
   const { activeTab, setActiveTab, currentPath, previewAugment } = useEditorStore();
@@ -46,64 +48,42 @@ export default function RightPanel() {
             onChange={handleTabChange}
             sx={{
               flex: 1,
-              minHeight: 32,
+              minHeight: 28,
               '& .MuiTabs-flexContainer': { gap: '2px' },
               '& .MuiTabs-indicator': { display: 'none' },
+              '& .MuiTab-root': {
+                flex: 1, minHeight: 28, minWidth: 0,
+                py: '4px', px: '6px',
+                fontSize: 10, gap: '3px',
+                borderRadius: '5px',
+                transition: 'background 0.15s ease',
+                textTransform: 'none',
+              },
             }}
           >
             <Tab
               label="Ports"
-              icon={<TuneIcon sx={{ fontSize: 13 }} />}
+              icon={<TuneIcon sx={{ fontSize: 12 }} />}
               iconPosition="start"
-              sx={{
-                flex: 1,
-                minHeight: 32,
-                py: 0.5,
-                px: 1,
-                borderRadius: '6px',
-                gap: 0.5,
-                transition: 'background 0.15s ease',
-                '&.Mui-selected': {
-                  bgcolor: 'rgba(129,140,248,0.18)',
-                  color: 'primary.main',
-                },
-              }}
+              sx={{ '&.Mui-selected': { bgcolor: 'rgba(129,140,248,0.18)', color: 'primary.main' } }}
             />
             <Tab
               label="Augment"
-              icon={<AutoFixHighIcon sx={{ fontSize: 13 }} />}
+              icon={<AutoFixHighIcon sx={{ fontSize: 12 }} />}
               iconPosition="start"
-              sx={{
-                flex: 1,
-                minHeight: 32,
-                py: 0.5,
-                px: 1,
-                borderRadius: '6px',
-                gap: 0.5,
-                transition: 'background 0.15s ease',
-                '&.Mui-selected': {
-                  bgcolor: 'rgba(129,140,248,0.18)',
-                  color: 'primary.main',
-                },
-              }}
+              sx={{ '&.Mui-selected': { bgcolor: 'rgba(129,140,248,0.18)', color: 'primary.main' } }}
             />
             <Tab
               label="Reports"
-              icon={<FlagIcon sx={{ fontSize: 13 }} />}
+              icon={<FlagIcon sx={{ fontSize: 12 }} />}
               iconPosition="start"
-              sx={{
-                flex: 1,
-                minHeight: 32,
-                py: 0.5,
-                px: 1,
-                borderRadius: '6px',
-                gap: 0.5,
-                transition: 'background 0.15s ease',
-                '&.Mui-selected': {
-                  bgcolor: 'rgba(239,68,68,0.15)',
-                  color: '#ef4444',
-                },
-              }}
+              sx={{ '&.Mui-selected': { bgcolor: 'rgba(239,68,68,0.15)', color: '#ef4444' } }}
+            />
+            <Tab
+              label="Export"
+              icon={<SaveAltIcon sx={{ fontSize: 12 }} />}
+              iconPosition="start"
+              sx={{ '&.Mui-selected': { bgcolor: 'rgba(156,68,238,0.15)', color: '#cc88ff' } }}
             />
           </Tabs>
         </Box>
@@ -113,6 +93,7 @@ export default function RightPanel() {
         {activeTab === 0 && <PortsTab />}
         {activeTab === 1 && <AugmentTab />}
         {activeTab === 2 && <ReportsTab />}
+        {activeTab === 3 && <ExportTab />}
       </Box>
     </Box>
   );
