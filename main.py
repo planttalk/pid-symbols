@@ -49,34 +49,41 @@ def cmd_process(args: argparse.Namespace) -> None:
     )
     from src.svg_utils import _minify_svg
     from src.utils import _metadata_quality, _slugify, _svg_sha256
+    from src.paths import Paths
+
+    input_path: Path | None = None
+    output_path: Path | None = None
 
     if args.input:
-        paths.INPUT_DIR = Path(args.input).resolve()
-    if args.augment_source and not args.input:
-        paths.INPUT_DIR = (paths.REPO_ROOT / args.augment_source).resolve()
+        input_path = Path(args.input).resolve()
+    elif args.augment_source:
+        input_path = (Paths.REPO_ROOT / args.augment_source).resolve()
+
     if args.output:
-        paths.PROCESSED_DIR = Path(args.output).resolve()
+        output_path = Path(args.output).resolve()
     elif args.input or args.augment_source or args.augment:
-        paths.PROCESSED_DIR = (
-            paths.INPUT_DIR.parent / f"{paths.INPUT_DIR.name}-augmented"
-        )
+        if input_path:
+            output_path = input_path.parent / f"{input_path.name}-augmented"
+
+    if input_path or output_path:
+        Paths.configure(input_dir=input_path, output_dir=output_path)
 
     if args.export_completed:
         export_dir = Path(args.export_completed).resolve()
         source_dir = (
             Path(args.export_source).resolve()
             if args.export_source
-            else paths.PROCESSED_DIR
+            else Paths.PROCESSED_DIR
         )
         export_completed_symbols(source_dir, export_dir, args.dry_run)
         return
 
     if args.migrate:
-        migrate_to_source_hierarchy(paths.PROCESSED_DIR, args.dry_run)
+        migrate_to_source_hierarchy(Paths.PROCESSED_DIR, args.dry_run)
         return
 
     if args.dedup_input:
-        dedup_input(paths.INPUT_DIR, args.dry_run)
+        dedup_input(Paths.INPUT_DIR, args.dry_run)
         return
 
     if args.migrate_legacy_completed:

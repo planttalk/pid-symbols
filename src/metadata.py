@@ -5,6 +5,7 @@ Metadata assembly, path normalization, and processed-directory resolution.
 """
 
 from pathlib import Path
+from typing import Any, TypeVar
 
 from . import paths
 from .constants import PIP_CATEGORIES, SCHEMA_VERSION
@@ -19,6 +20,43 @@ from .utils import (
     _slugify,
     _source_slug_from_path,
 )
+
+ClassificationT = TypeVar("ClassificationT", dict[str, Any], Any)
+
+
+def _get_standard(cl: ClassificationT) -> str:
+    """Get standard from classification result (supports both dict and object)."""
+    if isinstance(cl, dict):
+        return cl.get("standard", "unknown")
+    return getattr(cl, "standard", "unknown")
+
+
+def _get_category(cl: ClassificationT) -> str:
+    """Get category from classification result (supports both dict and object)."""
+    if isinstance(cl, dict):
+        return cl.get("category", "unknown")
+    return getattr(cl, "category", "unknown")
+
+
+def _get_subcategory(cl: ClassificationT) -> str:
+    """Get subcategory from classification result (supports both dict and object)."""
+    if isinstance(cl, dict):
+        return cl.get("subcategory", "")
+    return getattr(cl, "subcategory", "")
+
+
+def _get_confidence(cl: ClassificationT) -> str:
+    """Get confidence from classification result (supports both dict and object)."""
+    if isinstance(cl, dict):
+        return cl.get("confidence", "none")
+    return getattr(cl, "confidence", "none")
+
+
+def _get_method(cl: ClassificationT) -> str:
+    """Get method from classification result (supports both dict and object)."""
+    if isinstance(cl, dict):
+        return cl.get("method", "unknown")
+    return getattr(cl, "method", "unknown")
 
 
 def _normalize_stem(stem: str, standard: str) -> str:
@@ -36,7 +74,7 @@ def _normalize_stem(stem: str, standard: str) -> str:
           -> "pump"                               (no prefix for unknown)
     """
     clean = _STANDARD_RE.sub("", stem).strip().strip(",").strip()
-    body  = _slugify(clean) or _slugify(stem)
+    body = _slugify(clean) or _slugify(stem)
 
     std_slug = _safe_std_slug(standard)
     if standard == "unknown" or body.startswith(std_slug + "_") or body == std_slug:
@@ -44,23 +82,30 @@ def _normalize_stem(stem: str, standard: str) -> str:
 
     for short in ("isa_", "iso_", "din_", "pip_"):
         if std_slug.startswith(short[:-1]) and body.startswith(short):
-            body = body[len(short):]
+            body = body[len(short) :]
             break
 
     return f"{std_slug}_{body}"
 
 
-def processed_dir_for(classification: dict, source_path: str = "") -> Path:
+def processed_dir_for(classification: ClassificationT, source_path: str = "") -> Path:
     """Return the processed/ subdirectory for this classification.
 
     Layout: processed/{source_slug}/{standard_slug}/{category}/
     """
-    cat         = classification["category"]
-    source_slug = _source_slug_from_path(source_path) if source_path else "unknown_source"
+    cat = _get_category(classification)
+    source_slug = (
+        _source_slug_from_path(source_path) if source_path else "unknown_source"
+    )
 
     if cat in PIP_CATEGORIES:
         return paths.PROCESSED_DIR / source_slug / "pip" / cat
-    return paths.PROCESSED_DIR / source_slug / _safe_std_slug(classification["standard"]) / cat
+    return (
+        paths.PROCESSED_DIR
+        / source_slug
+        / _safe_std_slug(_get_standard(classification))
+        / cat
+    )
 
 
 def resolve_stem(base_stem: str, target_dir: Path, used: set[str]) -> str:
@@ -81,48 +126,56 @@ def resolve_stem(base_stem: str, target_dir: Path, used: set[str]) -> str:
     return stem
 
 
-def build_metadata(svg_path: Path, final_stem: str, classification: dict,
-                   source_path: str = "") -> dict:
+def build_metadata(
+    svg_path: Path,
+    final_stem: str,
+    classification: ClassificationT,
+    source_path: str = "",
+) -> dict:
     """Assemble the complete metadata dict for one SVG."""
-    svg_attrs   = parse_svg_attributes(svg_path)
-    src_path    = source_path or _rel_or_abs(svg_path, paths.REPO_ROOT)
+    svg_attrs = parse_svg_attributes(svg_path)
+    src_path = source_path or _rel_or_abs(svg_path, paths.REPO_ROOT)
     source_slug = _source_slug_from_path(src_path)
-    target_dir  = processed_dir_for(classification, src_path)
+    target_dir = processed_dir_for(classification, src_path)
 
-    cat = classification["category"]
+    cat = _get_category(classification)
     if cat in PIP_CATEGORIES:
         symbol_id = f"{source_slug}/pip/{cat}/{final_stem}"
     else:
-        symbol_id = f"{source_slug}/{_safe_std_slug(classification['standard'])}/{cat}/{final_stem}"
+        symbol_id = f"{source_slug}/{_safe_std_slug(_get_standard(classification))}/{cat}/{final_stem}"
 
     return {
-        "schema_version":    SCHEMA_VERSION,
-        "id":                symbol_id,
-        "filename":          final_stem + ".svg",
+        "schema_version": SCHEMA_VERSION,
+        "id": symbol_id,
+        "filename": final_stem + ".svg",
         "original_filename": svg_path.name,
-        "display_name":      _display_name_from_stem(svg_path.stem),
-        "standard":          classification["standard"],
-        "category":          classification["category"],
-        "subcategory":       classification["subcategory"],
-        "source_path":       _rel_or_abs(svg_path, paths.REPO_ROOT),
-        "svg_path":          _rel_or_abs(target_dir / (final_stem + ".svg"), paths.REPO_ROOT),
-        "metadata_path":     _rel_or_abs(target_dir / (final_stem + ".json"), paths.REPO_ROOT),
+        "display_name": _display_name_from_stem(svg_path.stem),
+        "standard": _get_standard(classification),
+        "category": _get_category(classification),
+        "subcategory": _get_subcategory(classification),
+        "classification": {
+            "confidence": _get_confidence(classification),
+            "method": _get_method(classification),
+        },
+        "source_path": _rel_or_abs(svg_path, paths.REPO_ROOT),
+        "svg_path": _rel_or_abs(target_dir / (final_stem + ".svg"), paths.REPO_ROOT),
+        "metadata_path": _rel_or_abs(
+            target_dir / (final_stem + ".json"), paths.REPO_ROOT
+        ),
         "svg": {
-            "width":         svg_attrs["width"],
-            "height":        svg_attrs["height"],
-            "view_box":      svg_attrs["view_box"],
+            "width": svg_attrs["width"],
+            "height": svg_attrs["height"],
+            "view_box": svg_attrs["view_box"],
             "element_count": svg_attrs["element_count"],
-            "has_text":      svg_attrs["has_text"],
-            "creator":       svg_attrs["creator"],
+            "has_text": svg_attrs["has_text"],
+            "creator": svg_attrs["creator"],
         },
         "file": {
             "size_bytes": svg_path.stat().st_size,
         },
-        "classification": {
-            "confidence": classification["confidence"],
-            "method":     classification["method"],
-        },
-        "tags":        _auto_tags(classification["category"], classification["subcategory"]),
-        "snap_points": detect_snap_points(svg_path, classification["category"]),
-        "notes":       "",
+        "tags": _auto_tags(
+            _get_category(classification), _get_subcategory(classification)
+        ),
+        "snap_points": detect_snap_points(svg_path, _get_category(classification)),
+        "notes": "",
     }
