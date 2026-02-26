@@ -13,8 +13,33 @@ from typing import cast
 import numpy as np
 from PIL import Image
 
+try:
+    import cairosvg
+except ImportError as exc:  # pragma: no cover - optional dependency
+    cairosvg = None  # type: ignore[assignment]
+    _CAIROSVG_IMPORT_ERROR = exc
+else:
+    _CAIROSVG_IMPORT_ERROR = None
+
+from .constants import (
+    BATCH_MAX_COUNT,
+    COMBO_ATTEMPT_LIMIT,
+    DEMOGRAPHIC_SIZE_MAX,
+    DEMOGRAPHIC_SIZE_MIN,
+    EFFECT_MAX_SCALE,
+    EFFECT_MIN_SCALE,
+    EFFECT_STDEV_RANGE,
+    EFFECT_STDEV_SCALE,
+    GENERATE_MAX_COUNT,
+    PREVIEW_MAX_COUNT,
+    RANDOM_EFFECTS_MAX,
+    RANDOM_EFFECTS_MIN,
+    YOLO_MASK_THRESHOLD,
+)
 from .reports import combo_overlaps_flagged, compute_effect_caps, compute_flagged_combos
 from .symbols import _safe_path, list_symbols
+from src.degradation import _APPLY_ORDER, apply_effects
+from src.svg_utils import _render_svg_to_png
 
 
 EffectIntensities = dict[str, float]
@@ -42,9 +67,9 @@ def _select_non_flagged_combo(
     rng: Random,
     apply_order: Sequence[str],
     flagged_combos: Sequence[frozenset[str]],
-    min_len: int = 3,
-    max_len: int = 7,
-    attempts: int = 12,
+    min_len: int = RANDOM_EFFECTS_MIN,
+    max_len: int = RANDOM_EFFECTS_MAX,
+    attempts: int = COMBO_ATTEMPT_LIMIT,
 ) -> list[str]:
     available = list(apply_order)
     if not available:
@@ -74,7 +99,11 @@ def _sample_effects(
         picked = _select_non_flagged_combo(rng, apply_order, flagged_combos)
         return {
             name: round(
-                _cap_intensity(rng.uniform(0.15, 0.65), effect_caps.get(name, 1.0)), 2
+                _cap_intensity(
+                    rng.uniform(EFFECT_MIN_SCALE, EFFECT_MAX_SCALE),
+                    effect_caps.get(name, 1.0),
+                ),
+                2,
             )
             for name in picked
         }
@@ -85,7 +114,7 @@ def _sample_effects(
             if intensity <= 0.0:
                 continue
             cap = effect_caps.get(name, 1.0)
-            scaled = intensity * rng.uniform(0.7, 1.3)
+            scaled = intensity * rng.uniform(EFFECT_STDEV_SCALE, EFFECT_STDEV_RANGE)
             variations[name] = round(_cap_intensity(scaled, cap), 3)
         return variations
 
@@ -129,8 +158,10 @@ def augment_preview(body: dict) -> tuple[dict | None, str]:
 
     rel = body.get("path", "")
     effects = {k: float(v) for k, v in body.get("effects", {}).items()}
-    size = max(64, min(2048, int(body.get("size", 512))))
-    count = max(1, min(200, int(body.get("count", 1))))
+    size = max(
+        DEMOGRAPHIC_SIZE_MIN, min(DEMOGRAPHIC_SIZE_MAX, int(body.get("size", 512)))
+    )
+    count = max(1, min(PREVIEW_MAX_COUNT, int(body.get("count", 1))))
     randomize_per = bool(body.get("randomize_per_image", False))
 
     base = _safe_path(rel)
@@ -140,35 +171,29 @@ def augment_preview(body: dict) -> tuple[dict | None, str]:
     if not svg_path.exists():
         return None, "SVG not found"
 
-    try:
-        from src.degradation import _APPLY_ORDER, apply_effects
-        from src.svg_utils import _render_svg_to_png
+    png_bytes = cast(bytes, _render_svg_to_png(svg_path))
+    base_arr = _normalize_image(png_bytes, size)
 
-        png_bytes = cast(bytes, _render_svg_to_png(svg_path))
-        base_arr = _normalize_image(png_bytes, size)
+    effect_caps = compute_effect_caps()
+    flagged_combos = compute_flagged_combos()
+    rng = Random()
 
-        effect_caps = compute_effect_caps()
-        flagged_combos = compute_flagged_combos()
-        rng = Random()
+    images_out: list[dict] = []
+    for _ in range(count):
+        varied = _sample_effects(
+            rng,
+            effect_caps,
+            flagged_combos,
+            _APPLY_ORDER,
+            effects,
+            randomize_per,
+        )
+        frame, geom = random_geometry_transform(base_arr, rng)
+        frame_effects = {**geom, **varied}
+        out_arr = apply_effects(frame, frame_effects)
+        images_out.append({"src": _encode_image(out_arr), "effects": frame_effects})
 
-        images_out: list[dict] = []
-        for _ in range(count):
-            varied = _sample_effects(
-                rng,
-                effect_caps,
-                flagged_combos,
-                _APPLY_ORDER,
-                effects,
-                randomize_per,
-            )
-            frame, geom = random_geometry_transform(base_arr, rng)
-            frame_effects = {**geom, **varied}
-            out_arr = apply_effects(frame, frame_effects)
-            images_out.append({"src": _encode_image(out_arr), "effects": frame_effects})
-
-        return {"images": images_out}, ""
-    except Exception as exc:
-        return None, str(exc)
+    return {"images": images_out}, ""
 
 
 def augment_generate(body: dict) -> tuple[dict | None, str]:
@@ -176,8 +201,10 @@ def augment_generate(body: dict) -> tuple[dict | None, str]:
 
     rel = body.get("path", "")
     effects = {k: float(v) for k, v in body.get("effects", {}).items()}
-    count = max(1, min(100, int(body.get("count", 5))))
-    size = max(64, min(2048, int(body.get("size", 512))))
+    count = max(1, min(GENERATE_MAX_COUNT, int(body.get("count", 5))))
+    size = max(
+        DEMOGRAPHIC_SIZE_MIN, min(DEMOGRAPHIC_SIZE_MAX, int(body.get("size", 512)))
+    )
     output_dir = (body.get("output_dir") or "").strip() or "./augmented"
     randomize_per = bool(body.get("randomize_per_image", False))
     return_images = bool(body.get("return_images", False))
@@ -250,7 +277,7 @@ def tight_bbox_yolo(arr: np.ndarray) -> tuple[float, float, float, float] | None
     """Return YOLO-normalised (cx, cy, w, h) bounding box for non-white pixels."""
 
     gray = arr.mean(axis=2)
-    mask = gray < 240
+    mask = gray < YOLO_MASK_THRESHOLD
     rows = np.where(mask.any(axis=1))[0]
     cols = np.where(mask.any(axis=0))[0]
     if not len(rows) or not len(cols):
@@ -300,8 +327,10 @@ def augment_batch(body: dict, batch_cancel: threading.Event):
     source = body.get("source", "").strip()
     standard = body.get("standard", "").strip()
     effects = {k: float(v) for k, v in body.get("effects", {}).items()}
-    size = max(64, min(2048, int(body.get("size", 512))))
-    count = max(1, min(200, int(body.get("count", 1))))
+    size = max(
+        DEMOGRAPHIC_SIZE_MIN, min(DEMOGRAPHIC_SIZE_MAX, int(body.get("size", 512)))
+    )
+    count = max(1, min(BATCH_MAX_COUNT, int(body.get("count", 1))))
     out_str = (body.get("output_dir") or "").strip() or "./augmented"
     randomize_per = bool(body.get("randomize_per_image", False))
     fmt = body.get("format", "png").lower()
@@ -327,22 +356,6 @@ def augment_batch(body: dict, batch_cancel: threading.Event):
 
     batch_cancel.clear()
     yield {"type": "start", "total": total}
-
-    try:
-        from src.degradation import _APPLY_ORDER, apply_effects
-        from src.svg_utils import _render_svg_to_png
-    except Exception as exc:
-        yield {
-            "type": "done",
-            "processed": 0,
-            "saved": 0,
-            "skipped": total,
-            "errors": 1,
-            "output_dir": out_str,
-            "format": fmt,
-            "error": str(exc),
-        }
-        return
 
     out_dir = Path(out_str)
     out_dir.mkdir(parents=True, exist_ok=True)
