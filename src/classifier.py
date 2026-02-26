@@ -13,6 +13,7 @@ Strategies applied in order by classify():
   6. unknown                        (if nothing matches)
 """
 
+from dataclasses import dataclass
 from pathlib import Path
 
 from . import paths
@@ -24,26 +25,41 @@ from .constants import (
     PIPING_STEM_PREFIXES,
     _REFERENCE_RE,
     _STANDARD_RE,
+    Category,
+    Confidence,
+    Standard,
+    Subcategory,
 )
 from .utils import _slugify, _extract_standard_from_name
 
 
-def _strategy_reference_sheet(svg_path: Path) -> dict | None:
+@dataclass(frozen=True, slots=True)
+class ClassificationResult:
+    """Immutable classification result for a P&ID symbol."""
+
+    standard: Standard
+    category: Category
+    subcategory: Subcategory
+    confidence: Confidence
+    method: str
+
+
+def _strategy_reference_sheet(svg_path: Path) -> ClassificationResult | None:
     """Strategy 0: Detect full reference sheets / drawings (not individual symbols)."""
     stem = svg_path.stem
     if _REFERENCE_RE.search(stem):
         standard = _extract_standard_from_name(stem) or "ISO 10628-2"
-        return {
-            "standard":    standard,
-            "category":    "reference_sheet",
-            "subcategory": _slugify(stem),
-            "confidence":  "high",
-            "method":      "reference_sheet_detection",
-        }
+        return ClassificationResult(
+            standard=Standard(standard),
+            category=Category("reference_sheet"),
+            subcategory=Subcategory(_slugify(stem)),
+            confidence=Confidence("high"),
+            method="reference_sheet_detection",
+        )
     return None
 
 
-def _strategy_autocad_folder(svg_path: Path) -> dict | None:
+def _strategy_autocad_folder(svg_path: Path) -> ClassificationResult | None:
     """Strategy 1: autocad-parser subfolder naming."""
     try:
         rel_parts = svg_path.relative_to(paths.INPUT_DIR).parts
@@ -62,33 +78,37 @@ def _strategy_autocad_folder(svg_path: Path) -> dict | None:
 
     for pip_prefix in PIPING_STEM_PREFIXES:
         if stem.lower().startswith(pip_prefix):
-            return {
-                "standard":    "PIP",
-                "category":    category,
-                "subcategory": stem[len(pip_prefix):],
-                "confidence":  "high",
-                "method":      "autocad_folder_map",
-            }
+            return ClassificationResult(
+                standard=Standard("PIP"),
+                category=Category(category),
+                subcategory=Subcategory(stem[len(pip_prefix) :]),
+                confidence=Confidence("high"),
+                method="autocad_folder_map",
+            )
 
     subcategory = stem
     for prefix in (
-        f"isa_{category}_", f"iso_{category}_",
-        "isa_", "iso_", "pip_", "pipa_",
+        f"isa_{category}_",
+        f"iso_{category}_",
+        "isa_",
+        "iso_",
+        "pip_",
+        "pipa_",
     ):
         if stem.lower().startswith(prefix):
-            subcategory = stem[len(prefix):]
+            subcategory = stem[len(prefix) :]
             break
 
-    return {
-        "standard":    standard,
-        "category":    category,
-        "subcategory": subcategory,
-        "confidence":  "high",
-        "method":      "autocad_folder_map",
-    }
+    return ClassificationResult(
+        standard=Standard(standard),
+        category=Category(category),
+        subcategory=Subcategory(subcategory),
+        confidence=Confidence("high"),
+        method="autocad_folder_map",
+    )
 
 
-def _strategy_filename_standard(svg_path: Path) -> dict | None:
+def _strategy_filename_standard(svg_path: Path) -> ClassificationResult | None:
     """Strategy 2: Standard tag embedded in filename e.g. '(ISO 10628-2)'."""
     stem = svg_path.stem
     standard = _extract_standard_from_name(stem)
@@ -110,16 +130,16 @@ def _strategy_filename_standard(svg_path: Path) -> dict | None:
     clean_stem = _STANDARD_RE.sub("", stem).strip().strip(",").strip()
     subcategory = _slugify(clean_stem)
 
-    return {
-        "standard":    standard,
-        "category":    category,
-        "subcategory": subcategory,
-        "confidence":  "high",
-        "method":      "filename_standard_tag",
-    }
+    return ClassificationResult(
+        standard=Standard(standard),
+        category=Category(category),
+        subcategory=Subcategory(subcategory),
+        confidence=Confidence("high"),
+        method="filename_standard_tag",
+    )
 
 
-def _strategy_downloaded_folder(svg_path: Path) -> dict | None:
+def _strategy_downloaded_folder(svg_path: Path) -> ClassificationResult | None:
     """Strategy 3: pid-symbols-generator/downloaded subfolder map."""
     try:
         rel_parts = svg_path.relative_to(paths.INPUT_DIR).parts
@@ -141,16 +161,16 @@ def _strategy_downloaded_folder(svg_path: Path) -> dict | None:
     stem = svg_path.stem
     clean_stem = _STANDARD_RE.sub("", stem).strip().strip(",").strip()
 
-    return {
-        "standard":    "ISO 10628-2",
-        "category":    category,
-        "subcategory": _slugify(clean_stem),
-        "confidence":  "high",
-        "method":      "downloaded_folder_map",
-    }
+    return ClassificationResult(
+        standard=Standard("ISO 10628-2"),
+        category=Category(category),
+        subcategory=Subcategory(_slugify(clean_stem)),
+        confidence=Confidence("high"),
+        method="downloaded_folder_map",
+    )
 
 
-def _strategy_generated_prefix(svg_path: Path) -> dict | None:
+def _strategy_generated_prefix(svg_path: Path) -> ClassificationResult | None:
     """Strategy 4: pid-symbols-generator/generated filename prefix."""
     try:
         rel_parts = svg_path.relative_to(paths.INPUT_DIR).parts
@@ -165,18 +185,18 @@ def _strategy_generated_prefix(svg_path: Path) -> dict | None:
     stem = svg_path.stem
     for prefix, (standard, category) in GENERATED_PREFIX_MAP.items():
         if stem.startswith(prefix):
-            return {
-                "standard":    standard,
-                "category":    category,
-                "subcategory": stem[len(prefix):],
-                "confidence":  "high",
-                "method":      "generated_prefix_map",
-            }
+            return ClassificationResult(
+                standard=Standard(standard),
+                category=Category(category),
+                subcategory=Subcategory(stem[len(prefix) :]),
+                confidence=Confidence("high"),
+                method="generated_prefix_map",
+            )
 
     return None
 
 
-def _strategy_keyword_heuristics(svg_path: Path) -> dict | None:
+def _strategy_keyword_heuristics(svg_path: Path) -> ClassificationResult | None:
     """Strategy 5: Generic keyword scan of the filename stem.
     Longer/more-specific keywords are checked before shorter ones."""
     stem_low = svg_path.stem.lower()
@@ -190,17 +210,17 @@ def _strategy_keyword_heuristics(svg_path: Path) -> dict | None:
                 if part.lower().startswith("iso"):
                     standard = "ISO 10628-2"
                     break
-            return {
-                "standard":    standard,
-                "category":    category,
-                "subcategory": _slugify(svg_path.stem),
-                "confidence":  "low",
-                "method":      "keyword_heuristic",
-            }
+            return ClassificationResult(
+                standard=Standard(standard),
+                category=Category(category),
+                subcategory=Subcategory(_slugify(svg_path.stem)),
+                confidence=Confidence("low"),
+                method="keyword_heuristic",
+            )
     return None
 
 
-def classify(svg_path: Path) -> dict:
+def classify(svg_path: Path) -> ClassificationResult:
     """Run all strategies in order; fall back to 'unknown'."""
     for strategy in (
         _strategy_reference_sheet,
@@ -214,10 +234,10 @@ def classify(svg_path: Path) -> dict:
         if result:
             return result
 
-    return {
-        "standard":    "unknown",
-        "category":    "unknown",
-        "subcategory": _slugify(svg_path.stem),
-        "confidence":  "none",
-        "method":      "unclassified",
-    }
+    return ClassificationResult(
+        standard=Standard("unknown"),
+        category=Category("unknown"),
+        subcategory=Subcategory(_slugify(svg_path.stem)),
+        confidence=Confidence("none"),
+        method="unclassified",
+    )

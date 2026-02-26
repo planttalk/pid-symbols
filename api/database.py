@@ -1,4 +1,5 @@
 """database.py — SQLite persistence layer for the collaborative review API."""
+
 from __future__ import annotations
 
 import os
@@ -40,6 +41,7 @@ CREATE TABLE IF NOT EXISTS port_submissions (
 
 # Connection context manager
 
+
 @contextmanager
 def get_db():
     """Yield a committed (or rolled-back) SQLite connection."""
@@ -63,6 +65,7 @@ def init_db() -> None:
 
 # API key CRUD
 
+
 def create_api_key(label: str, role: str = "contributor") -> str:
     """Generate and store a new Bearer token; return the raw token."""
     token = secrets.token_hex(32)
@@ -84,6 +87,7 @@ def get_api_key(token: str) -> sqlite3.Row | None:
 
 # Symbol state CRUD
 
+
 def get_symbol_state(symbol_id: str) -> sqlite3.Row | None:
     with get_db() as conn:
         return conn.execute(
@@ -97,9 +101,9 @@ def upsert_symbol_state(symbol_id: str, **fields) -> None:
     updates = {k: v for k, v in fields.items() if k in allowed}
     if not updates:
         return
-    cols   = ", ".join(updates.keys())
+    cols = ", ".join(updates.keys())
     placeholders = ", ".join("?" * len(updates))
-    vals   = list(updates.values())
+    vals = list(updates.values())
     with get_db() as conn:
         existing = conn.execute(
             "SELECT 1 FROM symbol_states WHERE symbol_id = ?", (symbol_id,)
@@ -119,14 +123,17 @@ def upsert_symbol_state(symbol_id: str, **fields) -> None:
 
 # Port submission CRUD
 
-def add_port_submission(symbol_id: str, contributor: str, snap_points_json: str, notes: str = "") -> int:
+
+def add_port_submission(
+    symbol_id: str, contributor: str, snap_points_json: str, notes: str = ""
+) -> int:
     """Store a port submission and return its row id."""
     with get_db() as conn:
         cur = conn.execute(
             "INSERT INTO port_submissions (symbol_id, contributor, snap_points, notes) VALUES (?, ?, ?, ?)",
             (symbol_id, contributor, snap_points_json, notes),
         )
-        return cur.lastrowid
+        return cur.lastrowid or 0
 
 
 def get_submissions_for_symbol(symbol_id: str) -> list[sqlite3.Row]:

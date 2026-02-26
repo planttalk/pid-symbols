@@ -1072,14 +1072,17 @@ def _augment_batch(body: dict):
         n_classes = 0
 
     processed = saved = skipped = errors = 0
-    effect_caps    = _compute_effect_caps()
-    flagged_combos = _compute_flagged_combos()
 
     for i, sym in enumerate(symbols):
         if _batch_cancel.is_set():
             yield {"type": "cancelled", "processed": processed, "saved": saved,
                    "skipped": skipped + (total - i), "errors": errors}
             return
+
+        # Re-read reports on every symbol so flags added mid-batch take effect
+        # immediately without requiring a server restart.
+        effect_caps    = _compute_effect_caps()
+        flagged_combos = _compute_flagged_combos()
 
         sym_id = sym["path"]
         base   = _safe_path(sym_id)
