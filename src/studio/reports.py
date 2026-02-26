@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import threading
 import time
+from collections.abc import Sequence
 from pathlib import Path
 
 REPORTS_FILE: Path | None = None
@@ -152,7 +153,7 @@ def compute_flagged_combos() -> list[frozenset]:
 
 def combo_overlaps_flagged(
     picked: set | frozenset,
-    flagged_combos: list[frozenset],
+    flagged_combos: Sequence[frozenset],
     threshold: float = 0.70,
 ) -> bool:
     """Return True if *picked* shares >= threshold fraction of any flagged combo."""
