@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 import io
 import random
+import threading
 from pathlib import Path
 
 from .reports import combo_overlaps_flagged, compute_effect_caps, compute_flagged_combos
@@ -234,6 +235,8 @@ def tight_bbox_yolo(arr) -> tuple | None:
     bw = (c1 - c0 + 1.0) / W
     bh = (r1 - r0 + 1.0) / H
     return (cx, cy, bw, bh)
+
+
 
 
 def augment_batch(body: dict, batch_cancel: threading.Event):

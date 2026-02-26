@@ -22,7 +22,7 @@ Examples:
 from __future__ import annotations
 
 import argparse
-import sys
+import os
 from pathlib import Path
 
 
@@ -459,7 +459,6 @@ Examples:
         parser.print_help()
 
 
-import os
-
 if __name__ == "__main__":
+    os.environ.setdefault("PYTHONUTF8", "1")
     main()

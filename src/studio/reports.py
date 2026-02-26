@@ -6,7 +6,6 @@ import json
 import threading
 import time
 from pathlib import Path
-from typing import Any
 
 REPORTS_FILE: Path | None = None
 _reports_lock = threading.RLock()

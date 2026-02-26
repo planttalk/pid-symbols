@@ -16,7 +16,7 @@ from pathlib import Path
 
 from . import paths
 from .constants import PIP_CATEGORIES, SCHEMA_VERSION
-from .metadata import processed_dir_for, resolve_stem
+from .metadata import resolve_stem
 from .svg_utils import _minify_svg
 from .utils import (
     _metadata_quality,
@@ -42,10 +42,10 @@ def export_completed_symbols(source_dir: Path, export_dir: Path, dry_run: bool) 
         return
 
     json_files = sorted(source_dir.rglob("*.json"))
-    completed  = 0
-    copied     = 0
-    skipped    = 0
-    errors     = 0
+    completed = 0
+    copied = 0
+    skipped = 0
+    errors = 0
     registry: list[dict] = []
 
     for json_path in json_files:
@@ -72,15 +72,15 @@ def export_completed_symbols(source_dir: Path, export_dir: Path, dry_run: bool) 
             continue
 
         # Destination mirrors the source tree under export_dir
-        rel         = json_path.relative_to(source_dir)
+        rel = json_path.relative_to(source_dir)
         target_json = export_dir / rel
-        target_svg  = target_json.with_suffix(".svg")
+        target_svg = target_json.with_suffix(".svg")
 
         # Rewrite path fields so the exported JSON is self-contained.
         # Paths are stored relative to export_dir (portable, no REPO_ROOT coupling).
         rel_posix = rel.as_posix()
         exported_meta = dict(meta)
-        exported_meta["svg_path"]      = rel.with_suffix(".svg").as_posix()
+        exported_meta["svg_path"] = rel.with_suffix(".svg").as_posix()
         exported_meta["metadata_path"] = rel_posix
 
         completed += 1
@@ -101,16 +101,16 @@ def export_completed_symbols(source_dir: Path, export_dir: Path, dry_run: bool) 
             json.dump(
                 {
                     "schema_version": SCHEMA_VERSION,
-                    "generated_at":   datetime.now(timezone.utc).isoformat(),
-                    "total_symbols":  len(registry),
-                    "symbols":        registry,
+                    "generated_at": datetime.now(timezone.utc).isoformat(),
+                    "total_symbols": len(registry),
+                    "symbols": registry,
                 },
                 fh,
                 indent=2,
                 ensure_ascii=False,
             )
 
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print(f"  Completed  : {completed}")
     print(f"  Copied     : {copied if not dry_run else 0}")
     if skipped:
@@ -121,7 +121,7 @@ def export_completed_symbols(source_dir: Path, export_dir: Path, dry_run: bool) 
     else:
         print(f"  Output     : {export_dir}")
         print("  Registry   : registry.json")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
 
 
 def migrate_to_source_hierarchy(processed_dir: Path, dry_run: bool) -> None:
@@ -140,7 +140,7 @@ def migrate_to_source_hierarchy(processed_dir: Path, dry_run: bool) -> None:
 
     reg_path = processed_dir / "registry.json"
     if not dry_run and reg_path.exists():
-        ts  = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
         bak = reg_path.with_name(f"registry.{ts}.bak.json")
         shutil.copy2(reg_path, bak)
         print(f"Registry backed up → {bak.name}")
@@ -149,8 +149,8 @@ def migrate_to_source_hierarchy(processed_dir: Path, dry_run: bool) -> None:
     moves: list[tuple] = []  # (old_json, new_json, old_svg, new_svg, meta)
 
     used_stems: dict[Path, set[str]] = {}
-    hash_map:   dict[str, dict]      = {}
-    hashes:     dict[str, list[str]] = {}
+    hash_map: dict[str, dict] = {}
+    hashes: dict[str, list[str]] = {}
 
     skipped = 0
 
@@ -177,31 +177,31 @@ def migrate_to_source_hierarchy(processed_dir: Path, dry_run: bool) -> None:
             content_hash = ""
 
         source_path_field = meta.get("source_path", "")
-        source_slug       = _source_slug_from_path(source_path_field) if source_path_field else "unknown_source"
+        source_slug = (
+            _source_slug_from_path(source_path_field)
+            if source_path_field
+            else "unknown_source"
+        )
 
-        cat      = meta.get("category", "unknown")
+        cat = meta.get("category", "unknown")
         standard = meta.get("standard", "unknown")
-        confidence = meta.get("classification", {}).get("confidence", "none")
-        method     = meta.get("classification", {}).get("method", "")
-        classification = {
-            "category":    cat,
-            "standard":    standard,
-            "subcategory": meta.get("subcategory", ""),
-            "confidence":  confidence,
-            "method":      method,
-        }
 
-        new_target_dir = paths.PROCESSED_DIR / source_slug / (
-            "pip" if cat in PIP_CATEGORIES else _safe_std_slug(standard)
-        ) / cat
+        new_target_dir = (
+            paths.PROCESSED_DIR
+            / source_slug
+            / ("pip" if cat in PIP_CATEGORIES else _safe_std_slug(standard))
+            / cat
+        )
 
         if new_target_dir not in used_stems:
             used_stems[new_target_dir] = set()
 
-        base_stem  = json_path.stem
+        base_stem = json_path.stem
         final_stem = base_stem
         if final_stem in used_stems[new_target_dir]:
-            final_stem = resolve_stem(base_stem, new_target_dir, used_stems[new_target_dir])
+            final_stem = resolve_stem(
+                base_stem, new_target_dir, used_stems[new_target_dir]
+            )
         else:
             used_stems[new_target_dir].add(final_stem)
 
@@ -211,27 +211,31 @@ def migrate_to_source_hierarchy(processed_dir: Path, dry_run: bool) -> None:
             new_id = f"{source_slug}/{_safe_std_slug(standard)}/{cat}/{final_stem}"
 
         new_json = new_target_dir / (final_stem + ".json")
-        new_svg  = new_target_dir / (final_stem + ".svg")
+        new_svg = new_target_dir / (final_stem + ".svg")
 
         if content_hash and content_hash in hash_map:
             existing_meta = hash_map[content_hash]
-            new_quality   = _metadata_quality(meta)
-            old_quality   = _metadata_quality(existing_meta)
+            new_quality = _metadata_quality(meta)
+            old_quality = _metadata_quality(existing_meta)
             if new_quality <= old_quality:
-                print(f"  [DUP ] {json_path.name}: duplicate of {existing_meta.get('id')}, skipping")
+                print(
+                    f"  [DUP ] {json_path.name}: duplicate of {existing_meta.get('id')}, skipping"
+                )
                 hashes.setdefault(content_hash, []).append(new_id)
                 skipped += 1
                 continue
             else:
-                print(f"  [DUP+] {json_path.name}: better quality than {existing_meta.get('id')}, replacing")
+                print(
+                    f"  [DUP+] {json_path.name}: better quality than {existing_meta.get('id')}, replacing"
+                )
                 hashes.setdefault(content_hash, []).append(existing_meta.get("id", ""))
                 hash_map[content_hash] = meta
         elif content_hash:
             hash_map[content_hash] = meta
-            hashes[content_hash]   = [new_id]
+            hashes[content_hash] = [new_id]
 
-        meta["id"]            = new_id
-        meta["svg_path"]      = _rel_or_abs(new_svg, paths.REPO_ROOT)
+        meta["id"] = new_id
+        meta["svg_path"] = _rel_or_abs(new_svg, paths.REPO_ROOT)
         meta["metadata_path"] = _rel_or_abs(new_json, paths.REPO_ROOT)
         if content_hash:
             meta["content_hash"] = content_hash
@@ -243,20 +247,20 @@ def migrate_to_source_hierarchy(processed_dir: Path, dry_run: bool) -> None:
         moves.append((json_path, new_json, svg_path, new_svg, meta))
 
     if dry_run:
-        print(f"\n{'='*60}")
+        print(f"\n{'=' * 60}")
         print(f"  Would move : {len(moves)}")
         print(f"  Skipped    : {skipped}")
         print("  [DRY RUN -- no files written]")
-        print(f"{'='*60}")
+        print(f"{'=' * 60}")
         return
 
-    moved    = 0
+    moved = 0
     m_errors = 0
     new_registry: list[dict] = []
     for old_json, new_json, old_svg, new_svg, meta in moves:
         try:
             new_json.parent.mkdir(parents=True, exist_ok=True)
-            shutil.move(str(old_svg),  str(new_svg))
+            shutil.move(str(old_svg), str(new_svg))
             shutil.move(str(old_json), str(new_json))
             new_json.write_text(
                 json.dumps(meta, indent=2, ensure_ascii=False) + "\n",
@@ -273,22 +277,22 @@ def migrate_to_source_hierarchy(processed_dir: Path, dry_run: bool) -> None:
         json.dump(
             {
                 "schema_version": SCHEMA_VERSION,
-                "generated_at":   datetime.now(timezone.utc).isoformat(),
-                "total_symbols":  len(new_registry),
-                "symbols":        new_registry,
-                "hashes":         hashes,
+                "generated_at": datetime.now(timezone.utc).isoformat(),
+                "total_symbols": len(new_registry),
+                "symbols": new_registry,
+                "hashes": hashes,
             },
             fh,
             indent=2,
             ensure_ascii=False,
         )
 
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print(f"  Moved   : {moved}")
     print(f"  Skipped : {skipped}")
     print(f"  Errors  : {m_errors}")
     print(f"  Registry: {new_reg_path}")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
 
 
 def dedup_input(input_dir: Path, dry_run: bool) -> None:
@@ -336,13 +340,13 @@ def dedup_input(input_dir: Path, dry_run: bool) -> None:
 
     if not to_delete:
         print("No duplicates found.")
-        print(f"{'='*60}")
+        print(f"{'=' * 60}")
         return
 
     deleted = 0
     for kept, dup in to_delete:
         rel_kept = kept.relative_to(input_dir)
-        rel_dup  = dup.relative_to(input_dir)
+        rel_dup = dup.relative_to(input_dir)
         print(f"  {'[DRY]' if dry_run else '[DEL ]'} {rel_dup}  (kept: {rel_kept})")
         if not dry_run:
             try:
@@ -352,14 +356,14 @@ def dedup_input(input_dir: Path, dry_run: bool) -> None:
                 print(f"           ERROR: {exc}")
                 errors += 1
 
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print(f"  Duplicates found : {len(to_delete)}")
     print(f"  Deleted          : {deleted if not dry_run else 0}")
     if errors:
         print(f"  Errors           : {errors}")
     if dry_run:
         print("  [DRY RUN -- no files deleted]")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
 
 
 def migrate_legacy_completed(processed_dir: Path, dry_run: bool) -> None:
@@ -384,8 +388,8 @@ def migrate_legacy_completed(processed_dir: Path, dry_run: bool) -> None:
 
     # Step 1: build lookup maps from all 4-part JSONs
     print("Building new-structure index…")
-    hash_to_new:   dict[str, Path] = {}   # content_hash → json path
-    srckey_to_new: dict[str, Path] = {}   # "source_path|orig_filename" → json path
+    hash_to_new: dict[str, Path] = {}  # content_hash → json path
+    srckey_to_new: dict[str, Path] = {}  # "source_path|orig_filename" → json path
 
     for json_path in sorted(processed_dir.rglob("*.json")):
         if json_path.name == "registry.json" or "_debug" in json_path.stem:
@@ -406,13 +410,15 @@ def migrate_legacy_completed(processed_dir: Path, dry_run: bool) -> None:
             hash_to_new[stored_hash] = json_path
 
         # index by source_path + original_filename
-        src   = meta.get("source_path", "")
-        orig  = meta.get("original_filename", "")
+        src = meta.get("source_path", "")
+        orig = meta.get("original_filename", "")
         if src and orig:
             srckey_to_new[f"{src}|{orig}"] = json_path
 
-    print(f"  Indexed {len(hash_to_new)} new-structure symbols by hash, "
-          f"{len(srckey_to_new)} by source key.\n")
+    print(
+        f"  Indexed {len(hash_to_new)} new-structure symbols by hash, "
+        f"{len(srckey_to_new)} by source key.\n"
+    )
 
     # Step 2: find completed old-structure JSONs
     legacy: list[tuple[Path, dict]] = []
@@ -426,7 +432,7 @@ def migrate_legacy_completed(processed_dir: Path, dry_run: bool) -> None:
             continue
 
         if meta.get("id", "").count("/") >= 3:
-            continue   # already new structure
+            continue  # already new structure
         if not meta.get("completed", False):
             continue
 
@@ -439,10 +445,10 @@ def migrate_legacy_completed(processed_dir: Path, dry_run: bool) -> None:
         return
 
     # Step 3: match and merge
-    merged   = 0
-    skipped  = 0
+    merged = 0
+    skipped = 0
     no_match = 0
-    errors   = 0
+    errors = 0
 
     for old_json, old_meta in legacy:
         old_svg = old_json.with_suffix(".svg")
@@ -460,12 +466,12 @@ def migrate_legacy_completed(processed_dir: Path, dry_run: bool) -> None:
         new_json = None
         match_method = ""
         if legacy_hash and legacy_hash in hash_to_new:
-            new_json     = hash_to_new[legacy_hash]
+            new_json = hash_to_new[legacy_hash]
             match_method = "hash"
         else:
             src_key = f"{old_meta.get('source_path', '')}|{old_meta.get('original_filename', '')}"
             if src_key in srckey_to_new:
-                new_json     = srckey_to_new[src_key]
+                new_json = srckey_to_new[src_key]
                 match_method = "source_path"
 
         rel_old = old_json.relative_to(processed_dir)
@@ -487,19 +493,23 @@ def migrate_legacy_completed(processed_dir: Path, dry_run: bool) -> None:
 
         # Skip if the new record is already complete with at least as many points
         if new_meta.get("completed") and len(new_pts) >= len(old_pts):
-            print(f"  [SKIP] {rel_old}  → {new_json.relative_to(processed_dir)}"
-                  f"  (already complete, {len(new_pts)} pts)")
+            print(
+                f"  [SKIP] {rel_old}  → {new_json.relative_to(processed_dir)}"
+                f"  (already complete, {len(new_pts)} pts)"
+            )
             skipped += 1
             continue
 
         rel_new = new_json.relative_to(processed_dir)
-        print(f"  {'[DRY]' if dry_run else '[MERGE]'} {rel_old}"
-              f"  ->  {rel_new}"
-              f"  ({match_method}, {len(old_pts)} snap_points)")
+        print(
+            f"  {'[DRY]' if dry_run else '[MERGE]'} {rel_old}"
+            f"  ->  {rel_new}"
+            f"  ({match_method}, {len(old_pts)} snap_points)"
+        )
 
         if not dry_run:
             new_meta["snap_points"] = old_pts
-            new_meta["completed"]   = True
+            new_meta["completed"] = True
             if old_meta.get("notes"):
                 new_meta["notes"] = old_meta["notes"]
             if legacy_hash:
@@ -514,9 +524,9 @@ def migrate_legacy_completed(processed_dir: Path, dry_run: bool) -> None:
                 print(f"           ERROR writing {new_json}: {exc}")
                 errors += 1
         else:
-            merged += 1   # count as "would merge" in dry-run
+            merged += 1  # count as "would merge" in dry-run
 
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print(f"  Legacy completed : {len(legacy)}")
     print(f"  {'Would merge' if dry_run else 'Merged'}    : {merged}")
     print(f"  Skipped (done)   : {skipped}")
@@ -525,4 +535,4 @@ def migrate_legacy_completed(processed_dir: Path, dry_run: bool) -> None:
         print(f"  Errors           : {errors}")
     if dry_run:
         print("  [DRY RUN -- no files written]")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")

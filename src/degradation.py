@@ -24,6 +24,7 @@ from PIL import Image, ImageFilter
 
 # Helpers
 
+
 def _clip(arr: np.ndarray) -> np.ndarray:
     return np.clip(arr, 0, 255).astype(np.uint8)
 
@@ -36,7 +37,7 @@ def _fbm_1d(
     n: int,
     octaves: int = 5,
     roughness: float = 0.65,
-    rng: 'np.random.Generator | None' = None,
+    rng: "np.random.Generator | None" = None,
 ) -> np.ndarray:
     """1D fractal Brownian motion via numpy linear interpolation.
 
@@ -52,17 +53,19 @@ def _fbm_1d(
     amp, freq = 1.0, 1
     for _ in range(octaves):
         period = max(2, n // freq)
-        n_pts  = n // period + 2
-        pts    = rng.uniform(-1.0, 1.0, n_pts).astype(np.float32)
-        x      = np.linspace(0, n_pts - 1, n)
+        n_pts = n // period + 2
+        pts = rng.uniform(-1.0, 1.0, n_pts).astype(np.float32)
+        x = np.linspace(0, n_pts - 1, n)
         result += np.interp(x, np.arange(n_pts), pts) * amp
-        amp  *= roughness
+        amp *= roughness
         freq *= 2
     mx = np.abs(result).max()
     return result / mx if mx > 0 else result
 
 
-def _paper_texture(H: int, W: int, rng: 'np.random.Generator | None' = None) -> np.ndarray:
+def _paper_texture(
+    H: int, W: int, rng: "np.random.Generator | None" = None
+) -> np.ndarray:
     """Procedural paper texture: warm off-white base + fine grain + fiber streaks.
 
     Used as the background revealed by tears (no PNG assets required).
@@ -81,9 +84,12 @@ def _paper_texture(H: int, W: int, rng: 'np.random.Generator | None' = None) -> 
     fiber_small = rng.uniform(-1.0, 1.0, (sh, sw)).astype(np.float32)
     fiber_up = (
         np.array(
-            Image.fromarray(((fiber_small + 1) * 127.5).astype(np.uint8))
-            .resize((W, H), Image.BILINEAR)
-        ).astype(np.float32) / 127.5 - 1.0
+            Image.fromarray(((fiber_small + 1) * 127.5).astype(np.uint8)).resize(
+                (W, H), Image.BILINEAR
+            )
+        ).astype(np.float32)
+        / 127.5
+        - 1.0
     )
     base += fiber_up[..., np.newaxis] * 5.0
     return np.clip(base, 200, 255).astype(np.uint8)
@@ -91,9 +97,10 @@ def _paper_texture(H: int, W: int, rng: 'np.random.Generator | None' = None) -> 
 
 # Physical
 
+
 def yellowing(img: np.ndarray, intensity: float) -> np.ndarray:
     """Warm-tone aging: paper base shifts toward sepia/cream."""
-    t   = float(intensity)
+    t = float(intensity)
     out = img.astype(np.float32)
     out[..., 0] = out[..., 0] * (1 + 0.08 * t) + 20 * t
     out[..., 1] = out[..., 1] * (1 + 0.02 * t) + 12 * t
@@ -117,8 +124,8 @@ def foxing(img: np.ndarray, intensity: float) -> np.ndarray:
     """
     rng = _rng()
     H, W = img.shape[:2]
-    out  = img.astype(np.float32)
-    n    = int(intensity * 80) + 1
+    out = img.astype(np.float32)
+    n = int(intensity * 80) + 1
 
     for _ in range(n):
         cx = int(rng.integers(0, W))
@@ -139,9 +146,9 @@ def foxing(img: np.ndarray, intensity: float) -> np.ndarray:
         # Angular harmonic noise → irregular, organic edge
         theta = np.arctan2(yy - cy, xx - cx)
         ang_noise = (
-            0.14 * np.sin(theta * 3  + rng.uniform(0, 6.28)) +
-            0.09 * np.sin(theta * 7  + rng.uniform(0, 6.28)) +
-            0.06 * np.sin(theta * 13 + rng.uniform(0, 6.28))
+            0.14 * np.sin(theta * 3 + rng.uniform(0, 6.28))
+            + 0.09 * np.sin(theta * 7 + rng.uniform(0, 6.28))
+            + 0.06 * np.sin(theta * 13 + rng.uniform(0, 6.28))
         )
         dist = base_dist * (1.0 + ang_noise * min(intensity, 1.0) * 0.40)
 
@@ -151,12 +158,12 @@ def foxing(img: np.ndarray, intensity: float) -> np.ndarray:
 
         fill_str = float(rng.uniform(0.15, 0.50)) * intensity
         ring_str = float(rng.uniform(0.30, 0.65)) * intensity
-        blend    = np.clip(fill * fill_str + ring * ring_str, 0, intensity * 0.9)
+        blend = np.clip(fill * fill_str + ring * ring_str, 0, intensity * 0.9)
 
         # Warm reddish-brown centre; ring is darker / more saturated
         hr = float(rng.uniform(110, 195))
-        hg = float(rng.uniform(55,  120))
-        hb = float(rng.uniform(15,  55))
+        hg = float(rng.uniform(55, 120))
+        hb = float(rng.uniform(15, 55))
         col_r = (fill * hr + ring * hr * 0.58) / np.maximum(fill + ring, 1e-6)
         col_g = (fill * hg + ring * hg * 0.58) / np.maximum(fill + ring, 1e-6)
         col_b = (fill * hb + ring * hb * 0.58) / np.maximum(fill + ring, 1e-6)
@@ -171,7 +178,7 @@ def crease(img: np.ndarray, intensity: float) -> np.ndarray:
     """Fold / score lines across the document."""
     rng = _rng()
     H, W = img.shape[:2]
-    out  = img.astype(np.float32)
+    out = img.astype(np.float32)
 
     for _ in range(max(1, int(intensity * 4))):
         if rng.random() > 0.5:
@@ -183,7 +190,7 @@ def crease(img: np.ndarray, intensity: float) -> np.ndarray:
                     out[y, :] = out[y, :] * (1 - 0.3 * w)
                     out[y, :, 0] += 15 * w
                     out[y, :, 1] += 10 * w
-                    out[y, :, 2] -= 5  * w
+                    out[y, :, 2] -= 5 * w
         else:
             x0 = int(rng.integers(W // 4, 3 * W // 4))
             for dx in range(-2, 3):
@@ -193,7 +200,7 @@ def crease(img: np.ndarray, intensity: float) -> np.ndarray:
                     out[:, x] = out[:, x] * (1 - 0.3 * w)
                     out[:, x, 0] += 15 * w
                     out[:, x, 1] += 10 * w
-                    out[:, x, 2] -= 5  * w
+                    out[:, x, 2] -= 5 * w
 
     return _clip(out)
 
@@ -209,7 +216,7 @@ def water_stain(img: np.ndarray, intensity: float) -> np.ndarray:
     """
     rng = _rng()
     H, W = img.shape[:2]
-    out  = img.astype(np.float32)
+    out = img.astype(np.float32)
 
     for _ in range(max(1, int(intensity * 3))):
         cx = int(rng.integers(W // 5, 4 * W // 5))
@@ -222,15 +229,14 @@ def water_stain(img: np.ndarray, intensity: float) -> np.ndarray:
         dx = (xx - cx).astype(np.float32)
 
         # FBM-deformed ellipse distance
-        theta   = np.arctan2(dy, dx)
-        deform  = (
-            0.12 * np.sin(theta * 2 + rng.uniform(0, 6.28)) +
-            0.08 * np.sin(theta * 5 + rng.uniform(0, 6.28)) +
-            0.05 * np.sin(theta * 9 + rng.uniform(0, 6.28))
+        theta = np.arctan2(dy, dx)
+        deform = (
+            0.12 * np.sin(theta * 2 + rng.uniform(0, 6.28))
+            + 0.08 * np.sin(theta * 5 + rng.uniform(0, 6.28))
+            + 0.05 * np.sin(theta * 9 + rng.uniform(0, 6.28))
         )
-        dist = (
-            np.sqrt((dx / rx) ** 2 + (dy / ry) ** 2)
-            * (1.0 + deform * intensity * 0.45)
+        dist = np.sqrt((dx / rx) ** 2 + (dy / ry) ** 2) * (
+            1.0 + deform * intensity * 0.45
         )
 
         # Interior: warm yellow-brown where water soaked in (dist < 1)
@@ -241,7 +247,7 @@ def water_stain(img: np.ndarray, intensity: float) -> np.ndarray:
 
         # Tidemark ring: sharp brownish line at the water boundary
         ring_w = 0.035 + (1.0 - intensity) * 0.05
-        ring   = np.exp(-((dist - 0.92) ** 2) / ring_w) * 0.70 * intensity
+        ring = np.exp(-((dist - 0.92) ** 2) / ring_w) * 0.70 * intensity
         out[..., 0] = out[..., 0] * (1 - ring) + 180 * ring
         out[..., 1] = out[..., 1] * (1 - ring) + 148 * ring
         out[..., 2] = out[..., 2] * (1 - ring) + 100 * ring
@@ -251,18 +257,18 @@ def water_stain(img: np.ndarray, intensity: float) -> np.ndarray:
 
 def edge_wear(img: np.ndarray, intensity: float) -> np.ndarray:
     """Frayed / worn borders — noise and brightening near edges."""
-    rng    = _rng()
-    H, W   = img.shape[:2]
-    out    = img.astype(np.float32)
+    rng = _rng()
+    H, W = img.shape[:2]
+    out = img.astype(np.float32)
     margin = max(2, int(min(H, W) * 0.08 * intensity))
 
     noise_h = rng.random((H, margin)).astype(np.float32) * intensity * 80
     noise_w = rng.random((margin, W)).astype(np.float32) * intensity * 80
 
     for c in range(3):
-        out[:, :margin, c]  = np.clip(out[:, :margin, c]  + noise_h,       0, 255)
+        out[:, :margin, c] = np.clip(out[:, :margin, c] + noise_h, 0, 255)
         out[:, -margin:, c] = np.clip(out[:, -margin:, c] + noise_h[:, ::-1], 0, 255)
-        out[:margin, :, c]  = np.clip(out[:margin, :, c]  + noise_w,       0, 255)
+        out[:margin, :, c] = np.clip(out[:margin, :, c] + noise_w, 0, 255)
         out[-margin:, :, c] = np.clip(out[-margin:, :, c] + noise_w[::-1, :], 0, 255)
 
     return _clip(out)
@@ -272,7 +278,7 @@ def fingerprint(img: np.ndarray, intensity: float) -> np.ndarray:
     """Grease smudge that reduces local contrast."""
     rng = _rng()
     H, W = img.shape[:2]
-    out  = img.astype(np.float32)
+    out = img.astype(np.float32)
 
     cx = int(rng.integers(W // 4, 3 * W // 4))
     cy = int(rng.integers(H // 4, 3 * H // 4))
@@ -280,11 +286,11 @@ def fingerprint(img: np.ndarray, intensity: float) -> np.ndarray:
     ry = int(rx * float(rng.uniform(0.5, 1.5)))
     rx, ry = max(rx, 1), max(ry, 1)
 
-    yy, xx   = np.mgrid[0:H, 0:W]
-    dist     = np.sqrt(((xx - cx) / rx)**2 + ((yy - cy) / ry)**2)
-    alpha    = np.maximum(0.0, 1.0 - dist) * intensity * 0.4
-    mean_c   = out.mean(axis=2, keepdims=True)
-    out      = out * (1 - alpha[..., None]) + mean_c * alpha[..., None]
+    yy, xx = np.mgrid[0:H, 0:W]
+    dist = np.sqrt(((xx - cx) / rx) ** 2 + ((yy - cy) / ry) ** 2)
+    alpha = np.maximum(0.0, 1.0 - dist) * intensity * 0.4
+    mean_c = out.mean(axis=2, keepdims=True)
+    out = out * (1 - alpha[..., None]) + mean_c * alpha[..., None]
     out[..., 2] -= alpha * 20
 
     return _clip(out)
@@ -292,10 +298,10 @@ def fingerprint(img: np.ndarray, intensity: float) -> np.ndarray:
 
 def binding_shadow(img: np.ndarray, intensity: float) -> np.ndarray:
     """Dark gradient at the left edge simulating a book spine."""
-    H, W  = img.shape[:2]
-    out   = img.astype(np.float32)
+    H, W = img.shape[:2]
+    out = img.astype(np.float32)
     width = max(1, int(W * 0.15 * intensity))
-    ramp  = np.linspace(1.0 - 0.7 * intensity, 1.0, width)
+    ramp = np.linspace(1.0 - 0.7 * intensity, 1.0, width)
     out[:, :width, :] *= ramp[None, :, None]
     return _clip(out)
 
@@ -304,39 +310,39 @@ def bleed_through(img: np.ndarray, intensity: float) -> np.ndarray:
     """Faint ghost of content from the reverse side of the sheet."""
     if intensity < 0.01:
         return img
-    ghost      = np.fliplr(img).astype(np.float32)
+    ghost = np.fliplr(img).astype(np.float32)
     ghost_gray = ghost.mean(axis=2, keepdims=True)
     ghost_light = 255.0 - (255.0 - ghost_gray) * intensity * 0.35
-    ghost_rgb   = np.repeat(ghost_light, 3, axis=2)
+    ghost_rgb = np.repeat(ghost_light, 3, axis=2)
     out = img.astype(np.float32) * (1 - intensity * 0.1) + ghost_rgb * intensity * 0.1
     return _clip(out)
 
 
 def hole_punch(img: np.ndarray, intensity: float) -> np.ndarray:
     """Circular punch holes along the left margin."""
-    H, W  = img.shape[:2]
-    out   = img.copy()
-    n     = max(1, int(intensity * 4))
-    r     = max(3, int(min(H, W) * 0.022))
+    H, W = img.shape[:2]
+    out = img.copy()
+    n = max(1, int(intensity * 4))
+    r = max(3, int(min(H, W) * 0.022))
     x_ctr = max(r + 2, int(W * 0.04))
     yy, xx = np.mgrid[0:H, 0:W]
 
     for i in range(n):
-        yp   = H // (n + 1) * (i + 1)
-        hole = (xx - x_ctr)**2 + (yy - yp)**2 < r**2
+        yp = H // (n + 1) * (i + 1)
+        hole = (xx - x_ctr) ** 2 + (yy - yp) ** 2 < r**2
         out[hole] = 255
     return out
 
 
 def tape_residue(img: np.ndarray, intensity: float) -> np.ndarray:
     """Yellowed adhesive tape strip."""
-    rng  = _rng()
+    rng = _rng()
     H, W = img.shape[:2]
-    out  = img.astype(np.float32)
+    out = img.astype(np.float32)
 
     tape_y = int(rng.integers(H // 10, H // 4))
     tape_h = max(4, int(H * 0.04))
-    alpha  = intensity * 0.5
+    alpha = intensity * 0.5
 
     sl = slice(tape_y, min(H, tape_y + tape_h))
     out[sl, :, 0] = out[sl, :, 0] * (1 - alpha) + 220 * alpha
@@ -347,23 +353,26 @@ def tape_residue(img: np.ndarray, intensity: float) -> np.ndarray:
 
 # Chemical
 
+
 def ink_fading(img: np.ndarray, intensity: float) -> np.ndarray:
     """Dark pigment degrades toward medium gray."""
-    out    = img.astype(np.float32)
+    out = img.astype(np.float32)
     target = 160.0
-    dark   = out < 128
-    blend  = intensity * 0.7
+    dark = out < 128
+    blend = intensity * 0.7
     out[dark] = out[dark] * (1 - blend) + target * blend
     return _clip(out)
 
 
 def ink_bleed(img: np.ndarray, intensity: float) -> np.ndarray:
     """Dark ink spreads / bleeds into surrounding paper fibers."""
-    radius   = max(1, int(intensity * 4))
-    pil      = Image.fromarray(img)
+    radius = max(1, int(intensity * 4))
+    pil = Image.fromarray(img)
     expanded = pil.filter(ImageFilter.MaxFilter(radius * 2 + 1))
-    out = (img.astype(np.float32) * (1 - intensity * 0.6) +
-           np.array(expanded).astype(np.float32) * intensity * 0.6)
+    out = (
+        img.astype(np.float32) * (1 - intensity * 0.6)
+        + np.array(expanded).astype(np.float32) * intensity * 0.6
+    )
     return _clip(out)
 
 
@@ -371,20 +380,20 @@ def coffee_stain(img: np.ndarray, intensity: float) -> np.ndarray:
     """Brown ring stain from a beverage cup."""
     rng = _rng()
     H, W = img.shape[:2]
-    out  = img.astype(np.float32)
+    out = img.astype(np.float32)
 
     cx = int(rng.integers(W // 4, 3 * W // 4))
     cy = int(rng.integers(H // 4, 3 * H // 4))
-    r  = int(min(H, W) * float(rng.uniform(0.1, 0.25)))
+    r = int(min(H, W) * float(rng.uniform(0.1, 0.25)))
     rw = max(3, int(r * 0.15))
 
     yy, xx = np.mgrid[0:H, 0:W]
-    dist   = np.sqrt((xx - cx).astype(float)**2 + (yy - cy).astype(float)**2)
-    blend  = np.maximum(0.0, 1.0 - np.abs(dist - r) / max(rw, 1)) * intensity * 0.7
+    dist = np.sqrt((xx - cx).astype(float) ** 2 + (yy - cy).astype(float) ** 2)
+    blend = np.maximum(0.0, 1.0 - np.abs(dist - r) / max(rw, 1)) * intensity * 0.7
 
     out[..., 0] = out[..., 0] * (1 - blend) + 160 * blend
     out[..., 1] = out[..., 1] * (1 - blend) + 110 * blend
-    out[..., 2] = out[..., 2] * (1 - blend) + 60  * blend
+    out[..., 2] = out[..., 2] * (1 - blend) + 60 * blend
     return _clip(out)
 
 
@@ -392,7 +401,7 @@ def oil_stain(img: np.ndarray, intensity: float) -> np.ndarray:
     """Translucent oil / grease patch."""
     rng = _rng()
     H, W = img.shape[:2]
-    out  = img.astype(np.float32)
+    out = img.astype(np.float32)
 
     cx = int(rng.integers(W // 4, 3 * W // 4))
     cy = int(rng.integers(H // 4, 3 * H // 4))
@@ -401,8 +410,10 @@ def oil_stain(img: np.ndarray, intensity: float) -> np.ndarray:
     rx, ry = max(rx, 1), max(ry, 1)
 
     yy, xx = np.mgrid[0:H, 0:W]
-    dist   = np.sqrt(((xx - cx) / rx).astype(float)**2 + ((yy - cy) / ry).astype(float)**2)
-    alpha  = np.maximum(0.0, 1.0 - dist)**0.5 * intensity * 0.4
+    dist = np.sqrt(
+        ((xx - cx) / rx).astype(float) ** 2 + ((yy - cy) / ry).astype(float) ** 2
+    )
+    alpha = np.maximum(0.0, 1.0 - dist) ** 0.5 * intensity * 0.4
 
     out[..., 0] -= alpha * out[..., 0] * 0.2
     out[..., 1] -= alpha * out[..., 1] * 0.3
@@ -414,19 +425,19 @@ def acid_spots(img: np.ndarray, intensity: float) -> np.ndarray:
     """Dark burn patches from acidic contact."""
     rng = _rng()
     H, W = img.shape[:2]
-    out  = img.astype(np.float32)
+    out = img.astype(np.float32)
 
     for _ in range(max(1, int(intensity * 5))):
         cx = int(rng.integers(0, W))
         cy = int(rng.integers(0, H))
-        r  = int(rng.integers(3, max(4, int(min(H, W) * 0.06))))
+        r = int(rng.integers(3, max(4, int(min(H, W) * 0.06))))
         y0, y1 = max(0, cy - r), min(H, cy + r)
         x0, x1 = max(0, cx - r), min(W, cx + r)
         if y0 >= y1 or x0 >= x1:
             continue
         yy, xx = np.ogrid[y0:y1, x0:x1]
-        dist   = np.sqrt(((xx - cx) / max(r, 1))**2 + ((yy - cy) / max(r, 1))**2)
-        alpha  = np.maximum(0.0, 1.0 - dist) * intensity * 0.8
+        dist = np.sqrt(((xx - cx) / max(r, 1)) ** 2 + ((yy - cy) / max(r, 1)) ** 2)
+        alpha = np.maximum(0.0, 1.0 - dist) * intensity * 0.8
         for c, v in enumerate([60.0, 45.0, 20.0]):
             out[y0:y1, x0:x1, c] = out[y0:y1, x0:x1, c] * (1 - alpha) + v * alpha
 
@@ -446,31 +457,34 @@ def toner_flaking(img: np.ndarray, intensity: float) -> np.ndarray:
     """Patchy toner loss in electrostatic / laser prints."""
     rng = _rng()
     H, W = img.shape[:2]
-    out  = img.astype(np.float32)
+    out = img.astype(np.float32)
 
     for _ in range(int(intensity * 20)):
         y0 = int(rng.integers(0, max(1, H - 5)))
         x0 = int(rng.integers(0, max(1, W - 5)))
         ph = int(rng.integers(2, 8))
         pw = int(rng.integers(2, 12))
-        a  = float(rng.uniform(0.3, 0.8)) * intensity
-        out[y0:y0+ph, x0:x0+pw] = out[y0:y0+ph, x0:x0+pw] * (1 - a) + 240 * a
+        a = float(rng.uniform(0.3, 0.8)) * intensity
+        out[y0 : y0 + ph, x0 : x0 + pw] = (
+            out[y0 : y0 + ph, x0 : x0 + pw] * (1 - a) + 240 * a
+        )
 
     return _clip(out)
 
 
 # Biological
 
+
 def mold(img: np.ndarray, intensity: float) -> np.ndarray:
     """Greenish-gray irregular mold colonies."""
     rng = _rng()
     H, W = img.shape[:2]
-    out  = img.astype(np.float32)
+    out = img.astype(np.float32)
 
     for _ in range(max(1, int(intensity * 4))):
         cx = int(rng.integers(0, W))
         cy = int(rng.integers(0, H))
-        r  = int(min(H, W) * float(rng.uniform(0.04, 0.15)) * intensity)
+        r = int(min(H, W) * float(rng.uniform(0.04, 0.15)) * intensity)
         if r < 2:
             continue
         y0, y1 = max(0, cy - r), min(H, cy + r)
@@ -478,8 +492,10 @@ def mold(img: np.ndarray, intensity: float) -> np.ndarray:
         if y0 >= y1 or x0 >= x1:
             continue
         yy, xx = np.ogrid[y0:y1, x0:x1]
-        dist  = (np.sqrt(((xx - cx) / max(r, 1))**2 + ((yy - cy) / max(r, 1))**2) +
-                 rng.random((y1-y0, x1-x0)) * 0.4)
+        dist = (
+            np.sqrt(((xx - cx) / max(r, 1)) ** 2 + ((yy - cy) / max(r, 1)) ** 2)
+            + rng.random((y1 - y0, x1 - x0)) * 0.4
+        )
         blend = np.maximum(0.0, 1.0 - dist) * float(rng.uniform(0.4, 0.8)) * intensity
         mr = float(rng.uniform(60, 120))
         mg = float(rng.uniform(80, 140))
@@ -492,15 +508,15 @@ def mold(img: np.ndarray, intensity: float) -> np.ndarray:
 
 def mildew(img: np.ndarray, intensity: float) -> np.ndarray:
     """Scattered small dark specks from mildew."""
-    rng  = _rng()
+    rng = _rng()
     H, W = img.shape[:2]
-    out  = img.copy()
-    n    = int(intensity * 200)
+    out = img.copy()
+    n = int(intensity * 200)
     if n < 1:
         return out
 
-    ys     = rng.integers(0, H, n)
-    xs     = rng.integers(0, W, n)
+    ys = rng.integers(0, H, n)
+    xs = rng.integers(0, W, n)
     colors = rng.integers(30, 80, (n, 3)).astype(np.uint8)
 
     for y, x, c in zip(ys, xs, colors):
@@ -515,25 +531,25 @@ def mildew(img: np.ndarray, intensity: float) -> np.ndarray:
 
 def bio_foxing(img: np.ndarray, intensity: float) -> np.ndarray:
     """Fungal foxing — denser, more orange-red than chemical foxing."""
-    rng  = _rng()
+    rng = _rng()
     H, W = img.shape[:2]
-    out  = img.astype(np.float32)
-    n    = int(intensity * 120) + 1
+    out = img.astype(np.float32)
+    n = int(intensity * 120) + 1
 
     for _ in range(n):
         cx = int(rng.integers(0, W))
         cy = int(rng.integers(0, H))
-        r  = int(rng.integers(1, max(2, int(min(H, W) * 0.025))))
+        r = int(rng.integers(1, max(2, int(min(H, W) * 0.025))))
         y0, y1 = max(0, cy - r * 2), min(H, cy + r * 2)
         x0, x1 = max(0, cx - r * 2), min(W, cx + r * 2)
         if y0 >= y1 or x0 >= x1:
             continue
         yy, xx = np.ogrid[y0:y1, x0:x1]
-        dist  = np.sqrt(((xx - cx) / max(r, 1))**2 + ((yy - cy) / max(r, 1))**2)
+        dist = np.sqrt(((xx - cx) / max(r, 1)) ** 2 + ((yy - cy) / max(r, 1)) ** 2)
         blend = np.maximum(0.0, 1.0 - dist) * float(rng.uniform(0.4, 0.9)) * intensity
         sr = float(rng.uniform(160, 210))
-        sg = float(rng.uniform(80,  130))
-        sb = float(rng.uniform(10,  50))
+        sg = float(rng.uniform(80, 130))
+        sb = float(rng.uniform(10, 50))
         for c, v in enumerate([sr, sg, sb]):
             out[y0:y1, x0:x1, c] = out[y0:y1, x0:x1, c] * (1 - blend) + v * blend
 
@@ -542,57 +558,63 @@ def bio_foxing(img: np.ndarray, intensity: float) -> np.ndarray:
 
 def insect_damage(img: np.ndarray, intensity: float) -> np.ndarray:
     """Small irregular holes and nibbled edges from insects."""
-    rng  = _rng()
+    rng = _rng()
     H, W = img.shape[:2]
-    out  = img.copy()
+    out = img.copy()
 
     for _ in range(int(intensity * 15)):
         cx = int(rng.integers(0, W))
         cy = int(rng.integers(0, H))
-        r  = int(rng.integers(1, max(2, int(min(H, W) * 0.02 * intensity) + 2)))
+        r = int(rng.integers(1, max(2, int(min(H, W) * 0.02 * intensity) + 2)))
         y0, y1 = max(0, cy - r), min(H, cy + r)
         x0, x1 = max(0, cx - r), min(W, cx + r)
         if y0 >= y1 or x0 >= x1:
             continue
         yy, xx = np.mgrid[y0:y1, x0:x1]
-        noise  = rng.random((y1-y0, x1-x0)) * r * 0.3
-        hole   = np.sqrt((xx - cx).astype(float)**2 + (yy - cy).astype(float)**2) + noise < r
+        noise = rng.random((y1 - y0, x1 - x0)) * r * 0.3
+        hole = (
+            np.sqrt((xx - cx).astype(float) ** 2 + (yy - cy).astype(float) ** 2) + noise
+            < r
+        )
         out[y0:y1, x0:x1][hole] = 248
     return out
 
 
 # Scanning
 
+
 def noise(img: np.ndarray, intensity: float) -> np.ndarray:
     """Gaussian sensor / grain noise."""
-    rng   = _rng()
+    rng = _rng()
     sigma = intensity * 30
-    n     = rng.normal(0, sigma, img.shape).astype(np.float32)
+    n = rng.normal(0, sigma, img.shape).astype(np.float32)
     return _clip(img.astype(np.float32) + n)
 
 
 def salt_pepper(img: np.ndarray, intensity: float) -> np.ndarray:
     """Dead / hot pixels (salt-and-pepper)."""
-    rng  = _rng()
+    rng = _rng()
     H, W = img.shape[:2]
-    out  = img.copy()
-    n    = int(H * W * intensity * 0.03)
+    out = img.copy()
+    n = int(H * W * intensity * 0.03)
     if n < 1:
         return out
 
-    ys = rng.integers(0, H, n); xs = rng.integers(0, W, n)
+    ys = rng.integers(0, H, n)
+    xs = rng.integers(0, W, n)
     out[ys, xs] = 255
-    ys = rng.integers(0, H, n); xs = rng.integers(0, W, n)
+    ys = rng.integers(0, H, n)
+    xs = rng.integers(0, W, n)
     out[ys, xs] = 0
     return out
 
 
 def vignette(img: np.ndarray, intensity: float) -> np.ndarray:
     """Darker corners from uneven scanner / camera illumination."""
-    H, W  = img.shape[:2]
+    H, W = img.shape[:2]
     yy, xx = np.mgrid[0:H, 0:W]
     cy, cx = H / 2.0, W / 2.0
-    dist   = np.sqrt(((xx - cx) / cx)**2 + ((yy - cy) / cy)**2)
+    dist = np.sqrt(((xx - cx) / cx) ** 2 + ((yy - cy) / cy) ** 2)
     shadow = np.clip(1.0 - dist * intensity * 0.6, 0.0, 1.0)[..., None]
     return _clip(img.astype(np.float32) * shadow)
 
@@ -609,21 +631,23 @@ def jpeg_artifacts(img: np.ndarray, intensity: float) -> np.ndarray:
 def skew(img: np.ndarray, intensity: float) -> np.ndarray:
     """Slight document rotation during scanner feeding."""
     angle = float(intensity) * 5.0
-    rotated = Image.fromarray(img).rotate(angle, fillcolor=(255, 255, 255), expand=False)
+    rotated = Image.fromarray(img).rotate(
+        angle, fillcolor=(255, 255, 255), expand=False
+    )
     return np.array(rotated)
 
 
 def barrel_distortion(img: np.ndarray, intensity: float) -> np.ndarray:
     """Barrel lens distortion."""
-    H, W  = img.shape[:2]
+    H, W = img.shape[:2]
     cy, cx = H / 2.0, W / 2.0
-    k      = float(intensity) * 0.3
+    k = float(intensity) * 0.3
 
     yy, xx = np.mgrid[0:H, 0:W].astype(np.float32)
     yn = (yy - cy) / cy
     xn = (xx - cx) / cx
-    r  = np.sqrt(xn**2 + yn**2)
-    f  = 1.0 + k * r**2
+    r = np.sqrt(xn**2 + yn**2)
+    f = 1.0 + k * r**2
 
     src_x = np.clip(xn * f * cx + cx, 0, W - 1).astype(int)
     src_y = np.clip(yn * f * cy + cy, 0, H - 1).astype(int)
@@ -636,29 +660,28 @@ def barrel_distortion(img: np.ndarray, intensity: float) -> np.ndarray:
 
 def moire(img: np.ndarray, intensity: float) -> np.ndarray:
     """Interference / moire pattern from scanning halftone originals."""
-    H, W  = img.shape[:2]
+    H, W = img.shape[:2]
     yy, xx = np.mgrid[0:H, 0:W]
-    freq   = 12.0
-    pat    = (np.sin(xx * freq * np.pi / W) *
-              np.sin(yy * freq * np.pi / H))
-    pat    = (pat + 1.0) / 2.0 * float(intensity) * 30.0
+    freq = 12.0
+    pat = np.sin(xx * freq * np.pi / W) * np.sin(yy * freq * np.pi / H)
+    pat = (pat + 1.0) / 2.0 * float(intensity) * 30.0
     return _clip(img.astype(np.float32) + pat[..., None])
 
 
 def halftone(img: np.ndarray, intensity: float) -> np.ndarray:
     """Halftone dot-screen pattern from printed originals."""
-    H, W  = img.shape[:2]
-    cell  = max(4, int(8 * (1.0 - float(intensity) * 0.5)))
-    out   = img.astype(np.float32)
+    H, W = img.shape[:2]
+    cell = max(4, int(8 * (1.0 - float(intensity) * 0.5)))
+    out = img.astype(np.float32)
 
-    yy, xx      = np.mgrid[0:H, 0:W]
-    cy_local    = (yy % cell) - cell // 2
-    cx_local    = (xx % cell) - cell // 2
-    dist_cell   = np.sqrt(cy_local.astype(float)**2 + cx_local.astype(float)**2)
-    brightness  = img.mean(axis=2) / 255.0
-    dot_r       = (1.0 - brightness) * (cell // 2) * 0.8
-    is_dot      = dist_cell < dot_r
-    out        += np.where(is_dot, -float(intensity) * 40.0, 0.0)[..., None]
+    yy, xx = np.mgrid[0:H, 0:W]
+    cy_local = (yy % cell) - cell // 2
+    cx_local = (xx % cell) - cell // 2
+    dist_cell = np.sqrt(cy_local.astype(float) ** 2 + cx_local.astype(float) ** 2)
+    brightness = img.mean(axis=2) / 255.0
+    dot_r = (1.0 - brightness) * (cell // 2) * 0.8
+    is_dot = dist_cell < dot_r
+    out += np.where(is_dot, -float(intensity) * 40.0, 0.0)[..., None]
     return _clip(out)
 
 
@@ -673,17 +696,17 @@ def color_cast(img: np.ndarray, intensity: float) -> np.ndarray:
 
 def blur(img: np.ndarray, intensity: float) -> np.ndarray:
     """Soft focus from scanner vibration or poor calibration."""
-    radius  = max(0.5, float(intensity) * 4.0)
+    radius = max(0.5, float(intensity) * 4.0)
     blurred = Image.fromarray(img).filter(ImageFilter.GaussianBlur(radius=radius))
     return np.array(blurred)
 
 
 def dust(img: np.ndarray, intensity: float) -> np.ndarray:
     """Tiny dark particles on scanner glass."""
-    rng  = _rng()
+    rng = _rng()
     H, W = img.shape[:2]
-    out  = img.copy()
-    n    = int(float(intensity) * 50)
+    out = img.copy()
+    n = int(float(intensity) * 50)
 
     ys = rng.integers(0, H, n)
     xs = rng.integers(0, W, n)
@@ -706,18 +729,23 @@ def underexpose(img: np.ndarray, intensity: float) -> np.ndarray:
 
 def motion_streak(img: np.ndarray, intensity: float) -> np.ndarray:
     """Horizontal motion blur from scanner vibration."""
-    radius  = max(0.5, float(intensity) * 5.0)
-    blurred = Image.fromarray(img).filter(ImageFilter.GaussianBlur(radius=(radius, 0.5)))
+    radius = max(0.5, float(intensity) * 5.0)
+    blurred = Image.fromarray(img).filter(
+        ImageFilter.GaussianBlur(radius=(radius, 0.5))
+    )
     return np.array(blurred)
 
 
 def binarization(img: np.ndarray, intensity: float) -> np.ndarray:
     """Harsh threshold creating broken / jagged strokes."""
-    gray      = img.mean(axis=2)
+    gray = img.mean(axis=2)
     threshold = 200 - float(intensity) * 100
-    binary    = (gray > threshold).astype(np.uint8) * 255
-    bw        = np.stack([binary, binary, binary], axis=2).astype(np.float32)
-    out = img.astype(np.float32) * (1 - float(intensity) * 0.7) + bw * float(intensity) * 0.7
+    binary = (gray > threshold).astype(np.uint8) * 255
+    bw = np.stack([binary, binary, binary], axis=2).astype(np.float32)
+    out = (
+        img.astype(np.float32) * (1 - float(intensity) * 0.7)
+        + bw * float(intensity) * 0.7
+    )
     return _clip(out)
 
 
@@ -727,17 +755,18 @@ def pixelation(img: np.ndarray, intensity: float) -> np.ndarray:
     Factor capped at 6× (was 12×) so lines remain recognizable at full intensity.
     Minimum downsampled dimension is 1/4 of original.
     """
-    H, W   = img.shape[:2]
+    H, W = img.shape[:2]
     factor = max(2, int(float(intensity) * 6))
-    sw     = max(W // 4, W // factor)
-    sh     = max(H // 4, H // factor)
-    pil    = Image.fromarray(img)
-    small  = pil.resize((sw, sh), Image.NEAREST)
-    big    = small.resize((W, H), Image.NEAREST)
+    sw = max(W // 4, W // factor)
+    sh = max(H // 4, H // factor)
+    pil = Image.fromarray(img)
+    small = pil.resize((sw, sh), Image.NEAREST)
+    big = small.resize((W, H), Image.NEAREST)
     return np.array(big)
 
 
 # Aged (composite age simulation)
+
 
 def aged_sepia(img: np.ndarray, intensity: float) -> np.ndarray:
     """Classic sepia-tone conversion — warm reddish-brown monochrome.
@@ -745,12 +774,12 @@ def aged_sepia(img: np.ndarray, intensity: float) -> np.ndarray:
     Simulates old photographs, blueprints printed on sepia paper, or any
     document that has turned fully sepia over decades.
     """
-    out  = img.astype(np.float32)
-    gray = out.mean(axis=2, keepdims=True)          # luminance proxy
+    out = img.astype(np.float32)
+    gray = out.mean(axis=2, keepdims=True)  # luminance proxy
     # Standard sepia coefficients blended with original by intensity
     sep_r = np.clip(gray * 1.08 + 38 * intensity, 0, 255)
     sep_g = np.clip(gray * 0.95 + 16 * intensity, 0, 255)
-    sep_b = np.clip(gray * 0.76 -  8 * intensity, 0, 255)
+    sep_b = np.clip(gray * 0.76 - 8 * intensity, 0, 255)
     sepia = np.concatenate([sep_r, sep_g, sep_b], axis=2)
     return _clip(out * (1 - intensity) + sepia * intensity)
 
@@ -782,8 +811,8 @@ def aged_stained(img: np.ndarray, intensity: float) -> np.ndarray:
     out = img
     out = water_stain(out, intensity * 0.8)
     out = coffee_stain(out, intensity * 0.6)
-    out = oil_stain(out,    intensity * 0.4)
-    out = yellowing(out,    intensity * 0.5)
+    out = oil_stain(out, intensity * 0.4)
+    out = yellowing(out, intensity * 0.5)
     return out
 
 
@@ -795,7 +824,7 @@ def aged_crumpled(img: np.ndarray, intensity: float) -> np.ndarray:
     """
     out = img
     out = wrinkle(out, intensity * 0.9)
-    out = crease(out,  intensity * 0.9)
+    out = crease(out, intensity * 0.9)
     out = edge_wear(out, intensity * 0.5)
     return out
 
@@ -807,12 +836,12 @@ def aged_archive(img: np.ndarray, intensity: float) -> np.ndarray:
     biologically degraded, and faded but still legible at low intensity.
     """
     out = img
-    out = yellowing(out,   intensity * 0.7)
-    out = foxing(out,      intensity * 0.7)
-    out = mildew(out,      intensity * 0.5)
-    out = bio_foxing(out,  intensity * 0.4)
-    out = ink_fading(out,  intensity * 0.5)
-    out = noise(out,       intensity * 0.15)
+    out = yellowing(out, intensity * 0.7)
+    out = foxing(out, intensity * 0.7)
+    out = mildew(out, intensity * 0.5)
+    out = bio_foxing(out, intensity * 0.4)
+    out = ink_fading(out, intensity * 0.5)
+    out = noise(out, intensity * 0.15)
     return out
 
 
@@ -826,12 +855,12 @@ def aged_newspaper(img: np.ndarray, intensity: float) -> np.ndarray:
     # Strong warm shifts toward golden/brown (newsprint colour)
     out[..., 0] = np.clip(out[..., 0] * (1 + 0.18 * intensity) + 50 * intensity, 0, 255)
     out[..., 1] = np.clip(out[..., 1] * (1 + 0.08 * intensity) + 25 * intensity, 0, 255)
-    out[..., 2] = np.clip(out[..., 2] * (1 - 0.40 * intensity),  0, 255)
+    out[..., 2] = np.clip(out[..., 2] * (1 - 0.40 * intensity), 0, 255)
     out = _clip(out)
     # Ink bleed into porous paper
     out = ink_bleed(out, intensity * 0.4)
     # Coarse noise (rough paper grain)
-    rng   = _rng()
+    rng = _rng()
     grain = rng.normal(0, intensity * 12, img.shape).astype(np.float32)
     return _clip(out.astype(np.float32) + grain)
 
@@ -842,9 +871,9 @@ def aged_light(img: np.ndarray, intensity: float) -> np.ndarray:
     A gentle composite that keeps text fully legible while giving a realistic
     5–15 year old paper feel.
     """
-    out = yellowing(img,   intensity * 0.6)
-    out = noise(out,       intensity * 0.25)
-    out = ink_fading(out,  intensity * 0.3)
+    out = yellowing(img, intensity * 0.6)
+    out = noise(out, intensity * 0.25)
+    out = ink_fading(out, intensity * 0.3)
     return out
 
 
@@ -853,11 +882,11 @@ def aged_heavy(img: np.ndarray, intensity: float) -> np.ndarray:
 
     Simulates 30–60 year old paper — still readable but visibly degraded.
     """
-    out = yellowing(img,   intensity * 0.85)
-    out = foxing(out,      intensity * 0.55)
-    out = crease(out,      intensity * 0.4)
-    out = ink_fading(out,  intensity * 0.5)
-    out = noise(out,       intensity * 0.2)
+    out = yellowing(img, intensity * 0.85)
+    out = foxing(out, intensity * 0.55)
+    out = crease(out, intensity * 0.4)
+    out = ink_fading(out, intensity * 0.5)
+    out = noise(out, intensity * 0.2)
     return out
 
 
@@ -867,16 +896,17 @@ def aged_brittle(img: np.ndarray, intensity: float) -> np.ndarray:
     Simulates archival/vintage documents (60+ years).  Lines may be partially
     lost at full intensity, which is intentional for challenging training data.
     """
-    out = yellowing(img,      intensity * 1.0)
-    out = foxing(out,         intensity * 0.8)
-    out = bio_foxing(out,     intensity * 0.5)
-    out = edge_wear(out,      intensity * 0.7)
-    out = water_stain(out,    intensity * 0.4)
-    out = ink_fading(out,     intensity * 0.65)
+    out = yellowing(img, intensity * 1.0)
+    out = foxing(out, intensity * 0.8)
+    out = bio_foxing(out, intensity * 0.5)
+    out = edge_wear(out, intensity * 0.7)
+    out = water_stain(out, intensity * 0.4)
+    out = ink_fading(out, intensity * 0.65)
     return out
 
 
 # Physical extras
+
 
 def wrinkle(img: np.ndarray, intensity: float) -> np.ndarray:
     """Realistic paper wrinkles: mesh warp + per-zone colour treatment.
@@ -887,102 +917,117 @@ def wrinkle(img: np.ndarray, intensity: float) -> np.ndarray:
       Convex  (dist > 0)          — subtle lift, mild warm tint.
     """
     import cv2
-    rng  = _rng()
+
+    rng = _rng()
     H, W = img.shape[:2]
-    t    = intensity
+    t = intensity
 
     xs = np.arange(W, dtype=np.float32)
     ys = np.arange(H, dtype=np.float32)
     XX, YY = np.meshgrid(xs, ys)
 
     # Accumulate each zone separately so colour treatments don't interfere
-    shadow_acc    = np.zeros((H, W), dtype=np.float32)   # valley darkness
-    highlight_acc = np.zeros((H, W), dtype=np.float32)   # ridge brightness
-    lift_acc      = np.zeros((H, W), dtype=np.float32)   # convex lift
-    halo_acc      = np.zeros((H, W), dtype=np.float32)   # warm colour bleed around crease
-    disp_x        = np.zeros((H, W), dtype=np.float32)
-    disp_y        = np.zeros((H, W), dtype=np.float32)
+    shadow_acc = np.zeros((H, W), dtype=np.float32)  # valley darkness
+    highlight_acc = np.zeros((H, W), dtype=np.float32)  # ridge brightness
+    lift_acc = np.zeros((H, W), dtype=np.float32)  # convex lift
+    halo_acc = np.zeros((H, W), dtype=np.float32)  # warm colour bleed around crease
+    disp_x = np.zeros((H, W), dtype=np.float32)
+    disp_y = np.zeros((H, W), dtype=np.float32)
 
     n_creases = rng.integers(3, max(5, int(9 * t) + 3))
     for _ in range(n_creases):
-        angle        = rng.uniform(0, np.pi)
-        cx           = rng.uniform(0.08, 0.92) * W
-        cy           = rng.uniform(0.08, 0.92) * H
+        angle = rng.uniform(0, np.pi)
+        cx = rng.uniform(0.08, 0.92) * W
+        cy = rng.uniform(0.08, 0.92) * H
         cos_a, sin_a = float(np.cos(angle)), float(np.sin(angle))
 
         dist = (XX - cx) * sin_a - (YY - cy) * cos_a
 
         # FBM waviness along the crease
-        along    = (XX - cx) * cos_a + (YY - cy) * sin_a
-        fbm      = _fbm_1d(max(H, W) + 2, octaves=5, roughness=0.72, rng=rng)
-        idx_raw  = (along / max(H, W) + 0.5) * (len(fbm) - 1)
+        along = (XX - cx) * cos_a + (YY - cy) * sin_a
+        fbm = _fbm_1d(max(H, W) + 2, octaves=5, roughness=0.72, rng=rng)
+        idx_raw = (along / max(H, W) + 0.5) * (len(fbm) - 1)
         idx_clip = np.clip(idx_raw, 0, len(fbm) - 2).astype(np.int32)
-        frac     = idx_raw - idx_clip
-        fbm_val  = fbm[idx_clip] * (1 - frac) + fbm[idx_clip + 1] * frac
-        dist     = dist - fbm_val * (min(H, W) * 0.065 * t)
+        frac = idx_raw - idx_clip
+        fbm_val = fbm[idx_clip] * (1 - frac) + fbm[idx_clip + 1] * frac
+        dist = dist - fbm_val * (min(H, W) * 0.065 * t)
 
-        crease_w     = max(1.0, min(H, W) * float(rng.uniform(0.007, 0.034)))
+        crease_w = max(1.0, min(H, W) * float(rng.uniform(0.007, 0.034)))
         sigma_shadow = crease_w * float(rng.uniform(4.5, 8.5))
-        sigma_hi     = crease_w * float(rng.uniform(0.55, 1.1))   # narrow → sharp peak
-        sigma_lift   = crease_w * float(rng.uniform(2.5, 5.5))
-        strength     = float(rng.uniform(0.65, 1.0))
+        sigma_hi = crease_w * float(rng.uniform(0.55, 1.1))  # narrow → sharp peak
+        sigma_lift = crease_w * float(rng.uniform(2.5, 5.5))
+        strength = float(rng.uniform(0.65, 1.0))
 
-        shadow    = np.exp(-(np.maximum(-dist, 0) ** 2) / (2 * sigma_shadow ** 2))
-        highlight = np.exp(-(dist ** 2)                / (2 * sigma_hi ** 2))
-        lift      = np.exp(-(np.maximum(dist, 0) ** 2) / (2 * sigma_lift ** 2))
+        shadow = np.exp(-(np.maximum(-dist, 0) ** 2) / (2 * sigma_shadow**2))
+        highlight = np.exp(-(dist**2) / (2 * sigma_hi**2))
+        lift = np.exp(-(np.maximum(dist, 0) ** 2) / (2 * sigma_lift**2))
 
         # Halo: medium-width Gaussian centred on crease covering both sides
         sigma_halo = crease_w * float(rng.uniform(2.2, 4.5))
-        halo       = np.exp(-(dist ** 2) / (2 * sigma_halo ** 2))
+        halo = np.exp(-(dist**2) / (2 * sigma_halo**2))
 
-        shadow_acc    += shadow    * 0.72 * t * strength
+        shadow_acc += shadow * 0.72 * t * strength
         highlight_acc += highlight * 0.42 * t * strength
-        lift_acc      += lift      * 0.13 * t * strength
-        halo_acc      += halo      * 0.60 * t * strength
+        lift_acc += lift * 0.13 * t * strength
+        halo_acc += halo * 0.60 * t * strength
 
         # Geometric warp — convergent push toward crease from both sides
         sigma_warp = crease_w * 4.5
-        warp_amp   = crease_w * 5.5 * t * strength
-        push       = np.sign(dist) * np.exp(-dist ** 2 / (2 * sigma_warp ** 2)) * warp_amp
-        disp_x    += push * sin_a
-        disp_y    -= push * cos_a
+        warp_amp = crease_w * 5.5 * t * strength
+        push = np.sign(dist) * np.exp(-(dist**2) / (2 * sigma_warp**2)) * warp_amp
+        disp_x += push * sin_a
+        disp_y -= push * cos_a
 
     # Paper buckling + micro-crinkle modulation
     buck_scale = max(3, min(H, W) // 7)
-    bh = max(2, H // buck_scale);  bw = max(2, W // buck_scale)
+    bh = max(2, H // buck_scale)
+    bw = max(2, W // buck_scale)
     buck_noise = rng.random((bh, bw)).astype(np.float32)
-    buck_map   = (np.array(Image.fromarray((buck_noise * 255).astype(np.uint8))
-                           .resize((W, H), Image.BILINEAR)).astype(np.float32) / 255.0)
+    buck_map = (
+        np.array(
+            Image.fromarray((buck_noise * 255).astype(np.uint8)).resize(
+                (W, H), Image.BILINEAR
+            )
+        ).astype(np.float32)
+        / 255.0
+    )
 
     fine_scale = max(2, min(H, W) // 28)
-    fh = max(2, H // fine_scale);  fw = max(2, W // fine_scale)
+    fh = max(2, H // fine_scale)
+    fw = max(2, W // fine_scale)
     fine_noise = rng.random((fh, fw)).astype(np.float32)
-    fine_map   = (np.array(Image.fromarray((fine_noise * 255).astype(np.uint8))
-                           .resize((W, H), Image.BILINEAR)).astype(np.float32) / 255.0)
+    fine_map = (
+        np.array(
+            Image.fromarray((fine_noise * 255).astype(np.uint8)).resize(
+                (W, H), Image.BILINEAR
+            )
+        ).astype(np.float32)
+        / 255.0
+    )
 
     # Compose brightness factor from the three zones
-    factor  = (1.0
-               - shadow_acc.clip(0, 1)
-               + highlight_acc.clip(0, 1)
-               + lift_acc.clip(0, 1))
+    factor = (
+        1.0 - shadow_acc.clip(0, 1) + highlight_acc.clip(0, 1) + lift_acc.clip(0, 1)
+    )
     factor *= 1.0 + (buck_map - 0.5) * t * 0.28
     factor *= 1.0 + (fine_map - 0.5) * t * 0.09
-    factor  = factor.clip(0.12, 1.50)   # deep valley ↔ bright ridge
+    factor = factor.clip(0.12, 1.50)  # deep valley ↔ bright ridge
 
     # 1. Geometric warp
-    map_x  = np.clip(XX + disp_x, 0, W - 1).astype(np.float32)
-    map_y  = np.clip(YY + disp_y, 0, H - 1).astype(np.float32)
-    warped = cv2.remap(img, map_x, map_y, cv2.INTER_LINEAR,
-                       borderMode=cv2.BORDER_REPLICATE)
+    map_x = np.clip(XX + disp_x, 0, W - 1).astype(np.float32)
+    map_y = np.clip(YY + disp_y, 0, H - 1).astype(np.float32)
+    warped = cv2.remap(
+        img, map_x, map_y, cv2.INTER_LINEAR, borderMode=cv2.BORDER_REPLICATE
+    )
 
     # 2. Brightness
     out = warped.astype(np.float32) * factor[..., None]
 
     # 3. Per-zone colour treatment
-    sh   = shadow_acc.clip(0, 1)          # 0-1 valley mask
-    hl   = highlight_acc.clip(0, 1)       # 0-1 ridge mask
-    lf   = lift_acc.clip(0, 1)            # 0-1 convex lift mask
-    halo = halo_acc.clip(0, 1)            # 0-1 warm colour bleed mask
+    sh = shadow_acc.clip(0, 1)  # 0-1 valley mask
+    hl = highlight_acc.clip(0, 1)  # 0-1 ridge mask
+    lf = lift_acc.clip(0, 1)  # 0-1 convex lift mask
+    halo = halo_acc.clip(0, 1)  # 0-1 warm colour bleed mask
 
     # Halo: broad warm-orange spread around the crease (applied first, lowest layer)
     out[..., 0] = np.clip(out[..., 0] + halo * 26 * t, 0, 255)
@@ -1000,8 +1045,8 @@ def wrinkle(img: np.ndarray, intensity: float) -> np.ndarray:
     out[..., 2] = np.clip(out[..., 2] + hl * 46 * t, 0, 255)
 
     # Convex lift: subtle cool tint (ambient light temperature shift)
-    out[..., 0] = np.clip(out[..., 0] - lf *  5 * t, 0, 255)
-    out[..., 1] = np.clip(out[..., 1] + lf *  3 * t, 0, 255)
+    out[..., 0] = np.clip(out[..., 0] - lf * 5 * t, 0, 255)
+    out[..., 1] = np.clip(out[..., 1] + lf * 3 * t, 0, 255)
     out[..., 2] = np.clip(out[..., 2] + lf * 12 * t, 0, 255)
 
     return _clip(out)
@@ -1018,64 +1063,76 @@ def wrinkle_v2(img: np.ndarray, intensity: float) -> np.ndarray:
       5. Per-zone colour tinting: amber/sepia in shadows, warm-white on lit ridges
     """
     import cv2
-    rng  = _rng()
+
+    rng = _rng()
     H, W = img.shape[:2]
-    t    = float(intensity)
+    t = float(intensity)
 
     # 2-D value noise via multi-scale bilinear upsampling (numpy + PIL, no extra deps)
     def _noise2d(scale: int, octaves: int, roughness: float) -> np.ndarray:
-        result    = np.zeros((H, W), dtype=np.float32)
+        result = np.zeros((H, W), dtype=np.float32)
         amp, freq = 1.0, 1
         total_amp = 0.0
         for _ in range(octaves):
-            bh  = max(2, H // max(1, scale * freq))
-            bw  = max(2, W // max(1, scale * freq))
+            bh = max(2, H // max(1, scale * freq))
+            bw = max(2, W // max(1, scale * freq))
             raw = rng.uniform(0.0, 1.0, (bh, bw)).astype(np.float32)
-            up  = (np.array(
-                      Image.fromarray((raw * 255).astype(np.uint8))
-                           .resize((W, H), Image.BILINEAR)
-                   ).astype(np.float32) / 255.0)
-            result    += up * amp
+            up = (
+                np.array(
+                    Image.fromarray((raw * 255).astype(np.uint8)).resize(
+                        (W, H), Image.BILINEAR
+                    )
+                ).astype(np.float32)
+                / 255.0
+            )
+            result += up * amp
             total_amp += amp
-            amp       *= roughness
-            freq      *= 2
+            amp *= roughness
+            freq *= 2
         lo, hi = result.min(), result.max()
         return (result - lo) / (hi - lo + 1e-6)
 
     # 1. Heightmap — blend large rolling wrinkles with micro surface texture
     large_scale = int(rng.integers(5, 10))  # 5–9: large rolling wrinkles
-    fine_scale  = int(rng.integers(2, 4))   # 2–3: micro surface texture
-    h = _noise2d(large_scale, octaves=5, roughness=0.60) * 0.80 \
-      + _noise2d(fine_scale,  octaves=3, roughness=0.55) * 0.20
+    fine_scale = int(rng.integers(2, 4))  # 2–3: micro surface texture
+    h = (
+        _noise2d(large_scale, octaves=5, roughness=0.60) * 0.80
+        + _noise2d(fine_scale, octaves=3, roughness=0.55) * 0.20
+    )
 
     # S-curve contrast boost: sharpens ridge peaks, deepens valley troughs
     h = np.clip((h - 0.5) * (1.0 + t * 1.4) + 0.5, 0.0, 1.0)
 
     # 2. Gradient → pixel displacement (image bends over the height surface)
-    grad_x   = (np.roll(h, -1, axis=1) - np.roll(h, 1, axis=1)) * 0.5
-    grad_y   = (np.roll(h, -1, axis=0) - np.roll(h, 1, axis=0)) * 0.5
-    disp_amp = t * min(H, W) * 0.10   # max displacement ≈ 10 % of image size
+    grad_x = (np.roll(h, -1, axis=1) - np.roll(h, 1, axis=1)) * 0.5
+    grad_y = (np.roll(h, -1, axis=0) - np.roll(h, 1, axis=0)) * 0.5
+    disp_amp = t * min(H, W) * 0.10  # max displacement ≈ 10 % of image size
 
-    xs, ys   = np.arange(W, dtype=np.float32), np.arange(H, dtype=np.float32)
-    XX, YY   = np.meshgrid(xs, ys)
-    map_x    = np.clip(XX + grad_x * disp_amp, 0, W - 1).astype(np.float32)
-    map_y    = np.clip(YY + grad_y * disp_amp, 0, H - 1).astype(np.float32)
-    warped   = cv2.remap(img, map_x, map_y, cv2.INTER_LINEAR,
-                         borderMode=cv2.BORDER_REPLICATE)
+    xs, ys = np.arange(W, dtype=np.float32), np.arange(H, dtype=np.float32)
+    XX, YY = np.meshgrid(xs, ys)
+    map_x = np.clip(XX + grad_x * disp_amp, 0, W - 1).astype(np.float32)
+    map_y = np.clip(YY + grad_y * disp_amp, 0, H - 1).astype(np.float32)
+    warped = cv2.remap(
+        img, map_x, map_y, cv2.INTER_LINEAR, borderMode=cv2.BORDER_REPLICATE
+    )
 
     # 3. Surface normals — n = normalize(−∂h/∂x, −∂h/∂y, z_scale)
     #    z_scale controls perceived depth: lower value → steeper apparent normal
     z_scale = max(0.8, 3.5 - t * 2.8)
-    nx      = -grad_x
-    ny      = -grad_y
-    nz      = np.full((H, W), z_scale, dtype=np.float32)
-    nn      = np.sqrt(nx ** 2 + ny ** 2 + nz ** 2) + 1e-8
-    nx /= nn;  ny /= nn;  nz /= nn
+    nx = -grad_x
+    ny = -grad_y
+    nz = np.full((H, W), z_scale, dtype=np.float32)
+    nn = np.sqrt(nx**2 + ny**2 + nz**2) + 1e-8
+    nx /= nn
+    ny /= nn
+    nz /= nn
 
     # Light direction: top-left, ≈55° elevation → normalize(−0.6, −0.6, 1.1)
     lx, ly, lz = -0.6, -0.6, 1.1
-    ln          = np.sqrt(lx ** 2 + ly ** 2 + lz ** 2)
-    lx /= ln;  ly /= ln;  lz /= ln
+    ln = np.sqrt(lx**2 + ly**2 + lz**2)
+    lx /= ln
+    ly /= ln
+    lz /= ln
 
     # Lambertian diffuse [0, 1]
     diffuse = np.clip(nx * lx + ny * ly + nz * lz, 0.0, 1.0)
@@ -1085,10 +1142,10 @@ def wrinkle_v2(img: np.ndarray, intensity: float) -> np.ndarray:
 
     # 4. Brightness factor
     #    Neutral = 1.0; deepest shadowed valley ≈ 0.45; brightest lit ridge ≈ 1.35
-    shadow_depth    = 0.55 * t
+    shadow_depth = 0.55 * t
     highlight_boost = 0.35 * t
-    brightness      = (1.0 - shadow_depth + diffuse * ao * (shadow_depth + highlight_boost))
-    brightness      = brightness.clip(0.40, 1.45)
+    brightness = 1.0 - shadow_depth + diffuse * ao * (shadow_depth + highlight_boost)
+    brightness = brightness.clip(0.40, 1.45)
 
     out = warped.astype(np.float32) * brightness[..., None]
 
@@ -1098,8 +1155,8 @@ def wrinkle_v2(img: np.ndarray, intensity: float) -> np.ndarray:
     valley /= valley.max() + 1e-6
 
     # Ridge mask: high heightmap + facing light → warm-white specular
-    ridge  = np.clip(h * diffuse, 0.0, 1.0)
-    ridge  /= ridge.max() + 1e-6
+    ridge = np.clip(h * diffuse, 0.0, 1.0)
+    ridge /= ridge.max() + 1e-6
 
     # Amber shadows (R strongly up, G slightly, B down)
     out[..., 0] = np.clip(out[..., 0] + valley * 46 * t, 0, 255)
@@ -1116,27 +1173,23 @@ def wrinkle_v2(img: np.ndarray, intensity: float) -> np.ndarray:
 
 def pencil_marks(img: np.ndarray, intensity: float) -> np.ndarray:
     """Light pencil / handwriting annotation strokes."""
-    rng  = _rng()
+    rng = _rng()
     H, W = img.shape[:2]
     mask = np.zeros((H, W), dtype=np.float32)
-    n    = max(1, int(intensity * 7))
+    n = max(1, int(intensity * 7))
 
     for _ in range(n):
-        x0        = int(rng.integers(0, W))
-        y0        = int(rng.integers(0, H))
-        length    = int(rng.integers(W // 8, W // 3))
+        x0 = int(rng.integers(0, W))
+        y0 = int(rng.integers(0, H))
+        length = int(rng.integers(W // 8, W // 3))
         angle_rad = float(rng.uniform(-0.5, 0.5))
-        steps     = max(length, 1)
-        alpha     = float(rng.uniform(0.05, 0.20)) * intensity
+        steps = max(length, 1)
+        alpha = float(rng.uniform(0.05, 0.20)) * intensity
 
-        xs = np.clip(
-            (x0 + np.arange(steps) * np.cos(angle_rad)).astype(int), 0, W - 1
-        )
-        ys = np.clip(
-            (y0 + np.arange(steps) * np.sin(angle_rad)).astype(int), 0, H - 1
-        )
-        mask[ys, xs]                            = np.maximum(mask[ys, xs], alpha)
-        mask[np.clip(ys + 1, 0, H - 1), xs]    = np.maximum(
+        xs = np.clip((x0 + np.arange(steps) * np.cos(angle_rad)).astype(int), 0, W - 1)
+        ys = np.clip((y0 + np.arange(steps) * np.sin(angle_rad)).astype(int), 0, H - 1)
+        mask[ys, xs] = np.maximum(mask[ys, xs], alpha)
+        mask[np.clip(ys + 1, 0, H - 1), xs] = np.maximum(
             mask[np.clip(ys + 1, 0, H - 1), xs], alpha * 0.4
         )
 
@@ -1163,8 +1216,8 @@ def ink_loss(img: np.ndarray, intensity: float) -> np.ndarray:
     """
     rng = _rng()
     H, W = img.shape[:2]
-    t    = float(intensity)
-    out  = img.astype(np.float32)
+    t = float(intensity)
+    out = img.astype(np.float32)
 
     # Two-scale organic mask: large blobs dominant, fine variation adds detail
     loss = np.zeros((H, W), dtype=np.float32)
@@ -1174,9 +1227,11 @@ def ink_loss(img: np.ndarray, intensity: float) -> np.ndarray:
         coarse = rng.uniform(0, 1, (sh, sw)).astype(np.float32)
         upscaled = (
             np.array(
-                Image.fromarray((coarse * 255).astype(np.uint8))
-                .resize((W, H), Image.BILINEAR)
-            ).astype(np.float32) / 255.0
+                Image.fromarray((coarse * 255).astype(np.uint8)).resize(
+                    (W, H), Image.BILINEAR
+                )
+            ).astype(np.float32)
+            / 255.0
         )
         loss += upscaled * amp
 
@@ -1184,14 +1239,14 @@ def ink_loss(img: np.ndarray, intensity: float) -> np.ndarray:
 
     # Threshold: how much area is affected scales with intensity
     thresh = max(0.10, 0.82 - t * 0.52)
-    loss   = np.clip((loss - thresh) / max(1.0 - thresh, 0.05), 0, 1)
+    loss = np.clip((loss - thresh) / max(1.0 - thresh, 0.05), 0, 1)
 
     # Restrict to ink-covered pixels — white paper is unaffected
-    gray       = img.mean(axis=2)
+    gray = img.mean(axis=2)
     ink_weight = np.clip((230.0 - gray) / 185.0, 0, 1)  # 1 = black ink, 0 = white
 
-    fade       = loss * ink_weight * min(t * 1.15, 0.95)
-    fade_to    = np.array([218, 212, 200], dtype=np.float32)  # pale aged-paper tone
+    fade = loss * ink_weight * min(t * 1.15, 0.95)
+    fade_to = np.array([218, 212, 200], dtype=np.float32)  # pale aged-paper tone
 
     for c in range(3):
         out[..., c] = out[..., c] * (1 - fade) + fade_to[c] * fade
@@ -1200,6 +1255,7 @@ def ink_loss(img: np.ndarray, intensity: float) -> np.ndarray:
 
 
 # Physical – Structural damage
+
 
 def tear(img: np.ndarray, intensity: float) -> np.ndarray:
     """Paper tear along one edge with realistic paper texture background.
@@ -1214,10 +1270,10 @@ def tear(img: np.ndarray, intensity: float) -> np.ndarray:
     No extra Python packages required; for smoother profiles install ``noise``
     (``pip install noise``) and replace ``_fbm_1d`` with simplex noise.
     """
-    rng  = _rng()
+    rng = _rng()
     H, W = img.shape[:2]
-    t    = float(intensity)
-    out  = img.copy().astype(np.float32)
+    t = float(intensity)
+    out = img.copy().astype(np.float32)
 
     edge = int(rng.integers(0, 4))  # 0=top  1=bottom  2=left  3=right
 
@@ -1230,8 +1286,8 @@ def tear(img: np.ndarray, intensity: float) -> np.ndarray:
         return img
 
     # Organic tear profile via FBM
-    raw    = _fbm_1d(n, octaves=5, roughness=0.62, rng=rng)
-    raw    = (raw - raw.min()) / max(raw.max() - raw.min(), 1e-6)
+    raw = _fbm_1d(n, octaves=5, roughness=0.62, rng=rng)
+    raw = (raw - raw.min()) / max(raw.max() - raw.min(), 1e-6)
     depths = (raw * max_depth).astype(int)
 
     row_idx = np.arange(H)[:, np.newaxis]  # (H, 1)
@@ -1239,27 +1295,29 @@ def tear(img: np.ndarray, intensity: float) -> np.ndarray:
 
     if edge == 0:
         d_map = depths[np.newaxis, :]
-        torn  = row_idx < d_map
+        torn = row_idx < d_map
     elif edge == 1:
         d_map = depths[np.newaxis, :]
-        torn  = row_idx >= (H - d_map)
+        torn = row_idx >= (H - d_map)
     elif edge == 2:
         d_map = depths[:, np.newaxis]
-        torn  = col_idx < d_map
+        torn = col_idx < d_map
     else:
         d_map = depths[:, np.newaxis]
-        torn  = col_idx >= (W - d_map)
+        torn = col_idx >= (W - d_map)
 
     # Paper texture in the exposed region
     paper = _paper_texture(H, W, rng).astype(np.float32)
-    out   = np.where(torn[..., np.newaxis], paper, out)
+    out = np.where(torn[..., np.newaxis], paper, out)
 
     # Drop-shadow on remaining paper near the tear boundary
-    torn_pil  = Image.fromarray((torn.astype(np.uint8) * 255))
-    shadow_r  = max(2.0, max_depth * 0.18)
+    torn_pil = Image.fromarray((torn.astype(np.uint8) * 255))
+    shadow_r = max(2.0, max_depth * 0.18)
     shadow_map = (
-        np.array(torn_pil.filter(ImageFilter.GaussianBlur(radius=shadow_r)))
-        .astype(np.float32) / 255.0
+        np.array(torn_pil.filter(ImageFilter.GaussianBlur(radius=shadow_r))).astype(
+            np.float32
+        )
+        / 255.0
     )
     # Restrict shadow to non-torn area only
     shadow_map *= 1.0 - torn.astype(np.float32)
@@ -1302,63 +1360,65 @@ def paper_fold(img: np.ndarray, intensity: float) -> np.ndarray:
       as the paper curves toward the viewer
     • FBM texture concentrated at the crease zone (fibre compression variation)
     """
-    rng  = _rng()
+    rng = _rng()
     H, W = img.shape[:2]
-    t    = float(intensity)
+    t = float(intensity)
 
     horizontal = bool(rng.integers(0, 2))
 
     if horizontal:
-        shadow_w  = max(H * 0.06, 5.0)
-        base_pos  = int(rng.uniform(0.2, 0.8) * H)
+        shadow_w = max(H * 0.06, 5.0)
+        base_pos = int(rng.uniform(0.2, 0.8) * H)
         # Slight curvature: fold-line position varies per column via FBM
-        dev       = _fbm_1d(W, octaves=4, roughness=0.60, rng=rng) * H * 0.025 * t
-        fold_pos  = base_pos + dev                              # (W,)
-        row_idx   = np.arange(H, dtype=np.float32)[:, np.newaxis]
-        dist      = row_idx - fold_pos[np.newaxis, :]           # (H, W) signed
-        fbm_tex   = np.abs(_fbm_1d(W, octaves=4, roughness=0.60, rng=rng)) * 0.04 * t
-        fbm_2d    = fbm_tex[np.newaxis, :]                      # (1, W)
+        dev = _fbm_1d(W, octaves=4, roughness=0.60, rng=rng) * H * 0.025 * t
+        fold_pos = base_pos + dev  # (W,)
+        row_idx = np.arange(H, dtype=np.float32)[:, np.newaxis]
+        dist = row_idx - fold_pos[np.newaxis, :]  # (H, W) signed
+        fbm_tex = np.abs(_fbm_1d(W, octaves=4, roughness=0.60, rng=rng)) * 0.04 * t
+        fbm_2d = fbm_tex[np.newaxis, :]  # (1, W)
     else:
-        shadow_w  = max(W * 0.06, 5.0)
-        base_pos  = int(rng.uniform(0.2, 0.8) * W)
-        dev       = _fbm_1d(H, octaves=4, roughness=0.60, rng=rng) * W * 0.025 * t
-        fold_pos  = base_pos + dev                              # (H,)
-        col_idx   = np.arange(W, dtype=np.float32)[np.newaxis, :]
-        dist      = col_idx - fold_pos[:, np.newaxis]           # (H, W) signed
-        fbm_tex   = np.abs(_fbm_1d(H, octaves=4, roughness=0.60, rng=rng)) * 0.04 * t
-        fbm_2d    = fbm_tex[:, np.newaxis]                      # (H, 1)
+        shadow_w = max(W * 0.06, 5.0)
+        base_pos = int(rng.uniform(0.2, 0.8) * W)
+        dev = _fbm_1d(H, octaves=4, roughness=0.60, rng=rng) * W * 0.025 * t
+        fold_pos = base_pos + dev  # (H,)
+        col_idx = np.arange(W, dtype=np.float32)[np.newaxis, :]
+        dist = col_idx - fold_pos[:, np.newaxis]  # (H, W) signed
+        fbm_tex = np.abs(_fbm_1d(H, octaves=4, roughness=0.60, rng=rng)) * 0.04 * t
+        fbm_2d = fbm_tex[:, np.newaxis]  # (H, 1)
 
     # Profile components (all (H, W) arrays)
 
     # Wide shadow: concave side only (dist < 0)
-    shadow   = np.exp(-(np.maximum(-dist, 0) ** 2) / (2 * (shadow_w * 0.70) ** 2))
-    shadow  *= 0.36 * t
+    shadow = np.exp(-(np.maximum(-dist, 0) ** 2) / (2 * (shadow_w * 0.70) ** 2))
+    shadow *= 0.36 * t
 
     # Grazing shadow: narrow dark band just before the crease
-    grazing  = np.exp(-((dist + shadow_w * 0.12) ** 2) / (2 * (shadow_w * 0.08) ** 2))
+    grazing = np.exp(-((dist + shadow_w * 0.12) ** 2) / (2 * (shadow_w * 0.08) ** 2))
     grazing *= 0.22 * t
 
     # Highlight: bright narrow line at the crease
-    highlight  = np.exp(-(dist ** 2) / (2 * (shadow_w * 0.20) ** 2))
+    highlight = np.exp(-(dist**2) / (2 * (shadow_w * 0.20) ** 2))
     highlight *= 0.24 * t
 
     # Lift: convex side brightens slightly
-    lift   = np.exp(-(np.maximum(dist, 0) ** 2) / (2 * (shadow_w * 0.55) ** 2))
-    lift  *= 0.09 * t
+    lift = np.exp(-(np.maximum(dist, 0) ** 2) / (2 * (shadow_w * 0.55) ** 2))
+    lift *= 0.09 * t
 
     # FBM surface texture concentrated near the crease
-    near_fold = np.exp(-(dist ** 2) / (2 * (shadow_w * 0.85) ** 2))
-    fold_var  = fbm_2d * near_fold
+    near_fold = np.exp(-(dist**2) / (2 * (shadow_w * 0.85) ** 2))
+    fold_var = fbm_2d * near_fold
 
     factor = np.clip(
         1.0 - shadow - grazing + highlight + lift + fold_var,
-        0.58, 1.24,
+        0.58,
+        1.24,
     ).astype(np.float32)
 
     return _clip(img.astype(np.float32) * factor[..., np.newaxis])
 
 
 # Reproduction
+
 
 def photocopy(img: np.ndarray, intensity: float) -> np.ndarray:
     """Photocopy effect: contrast boost, coarse grain, edge accentuation."""
@@ -1371,33 +1431,35 @@ def photocopy(img: np.ndarray, intensity: float) -> np.ndarray:
 
     # Coarse grain
     grain = rng.normal(0, intensity * 18.0, img.shape).astype(np.float32)
-    out   = out + grain
+    out = out + grain
 
     # Slight unsharp-mask to accentuate edges
-    tmp      = _clip(out)
-    blurred  = np.array(
+    tmp = _clip(out)
+    blurred = np.array(
         Image.fromarray(tmp).filter(ImageFilter.GaussianBlur(radius=1.5))
     ).astype(np.float32)
-    out = _clip(tmp.astype(np.float32) + (tmp.astype(np.float32) - blurred) * intensity * 0.5)
+    out = _clip(
+        tmp.astype(np.float32) + (tmp.astype(np.float32) - blurred) * intensity * 0.5
+    )
     return out
 
 
 def fax_lines(img: np.ndarray, intensity: float) -> np.ndarray:
     """Horizontal banding and scan-line dropouts from fax transmission."""
-    rng     = _rng()
-    H, W    = img.shape[:2]
-    out     = img.astype(np.float32)
+    rng = _rng()
+    H, W = img.shape[:2]
+    out = img.astype(np.float32)
     spacing = max(3, int(16 - intensity * 10))
 
     for y in range(0, H, spacing):
         # Random brightness variation per band
-        band_h     = max(1, spacing // 3)
+        band_h = max(1, spacing // 3)
         brightness = float(rng.uniform(0.82, 1.0))
         out[y : min(H, y + band_h), :] *= brightness
         # Occasional dark dropout line
         if rng.random() < intensity * 0.35:
             dropout = float(rng.uniform(0.25, 0.65)) * intensity
-            out[y, :] *= (1.0 - dropout)
+            out[y, :] *= 1.0 - dropout
 
     return _clip(out)
 
@@ -1406,89 +1468,129 @@ def fax_lines(img: np.ndarray, intensity: float) -> np.ndarray:
 
 EFFECTS: dict[str, callable] = {
     # Physical
-    "yellowing":         yellowing,
-    "foxing":            foxing,
-    "crease":            crease,
-    "water_stain":       water_stain,
-    "edge_wear":         edge_wear,
-    "fingerprint":       fingerprint,
-    "binding_shadow":    binding_shadow,
-    "bleed_through":     bleed_through,
-    "hole_punch":        hole_punch,
-    "tape_residue":      tape_residue,
-    "wrinkle":           wrinkle,
-    "wrinkle_v2":        wrinkle_v2,
-    "pencil_marks":      pencil_marks,
-    "ink_loss":          ink_loss,
-    "tear":              tear,
-    "paper_fold":        paper_fold,
+    "yellowing": yellowing,
+    "foxing": foxing,
+    "crease": crease,
+    "water_stain": water_stain,
+    "edge_wear": edge_wear,
+    "fingerprint": fingerprint,
+    "binding_shadow": binding_shadow,
+    "bleed_through": bleed_through,
+    "hole_punch": hole_punch,
+    "tape_residue": tape_residue,
+    "wrinkle": wrinkle,
+    "wrinkle_v2": wrinkle_v2,
+    "pencil_marks": pencil_marks,
+    "ink_loss": ink_loss,
+    "tear": tear,
+    "paper_fold": paper_fold,
     # Chemical
-    "ink_fading":        ink_fading,
-    "ink_bleed":         ink_bleed,
-    "coffee_stain":      coffee_stain,
-    "oil_stain":         oil_stain,
-    "acid_spots":        acid_spots,
-    "bleaching":         bleaching,
-    "toner_flaking":     toner_flaking,
+    "ink_fading": ink_fading,
+    "ink_bleed": ink_bleed,
+    "coffee_stain": coffee_stain,
+    "oil_stain": oil_stain,
+    "acid_spots": acid_spots,
+    "bleaching": bleaching,
+    "toner_flaking": toner_flaking,
     # Biological
-    "mold":              mold,
-    "mildew":            mildew,
-    "bio_foxing":        bio_foxing,
-    "insect_damage":     insect_damage,
+    "mold": mold,
+    "mildew": mildew,
+    "bio_foxing": bio_foxing,
+    "insect_damage": insect_damage,
     # Aged (composite presets — ordered from lightest to most extreme)
-    "aged_sepia":        aged_sepia,
-    "aged_yellowed":     aged_yellowed,
-    "aged_newspaper":    aged_newspaper,
-    "aged_stained":      aged_stained,
-    "aged_crumpled":     aged_crumpled,
-    "aged_archive":      aged_archive,
-    "aged_light":        aged_light,
-    "aged_heavy":        aged_heavy,
-    "aged_brittle":      aged_brittle,
+    "aged_sepia": aged_sepia,
+    "aged_yellowed": aged_yellowed,
+    "aged_newspaper": aged_newspaper,
+    "aged_stained": aged_stained,
+    "aged_crumpled": aged_crumpled,
+    "aged_archive": aged_archive,
+    "aged_light": aged_light,
+    "aged_heavy": aged_heavy,
+    "aged_brittle": aged_brittle,
     # Scanning
-    "noise":             noise,
-    "salt_pepper":       salt_pepper,
-    "vignette":          vignette,
-    "jpeg_artifacts":    jpeg_artifacts,
-    "skew":              skew,
+    "noise": noise,
+    "salt_pepper": salt_pepper,
+    "vignette": vignette,
+    "jpeg_artifacts": jpeg_artifacts,
+    "skew": skew,
     "barrel_distortion": barrel_distortion,
-    "moire":             moire,
-    "halftone":          halftone,
-    "color_cast":        color_cast,
-    "blur":              blur,
-    "dust":              dust,
-    "overexpose":        overexpose,
-    "underexpose":       underexpose,
-    "motion_streak":     motion_streak,
-    "binarization":      binarization,
-    "pixelation":        pixelation,
+    "moire": moire,
+    "halftone": halftone,
+    "color_cast": color_cast,
+    "blur": blur,
+    "dust": dust,
+    "overexpose": overexpose,
+    "underexpose": underexpose,
+    "motion_streak": motion_streak,
+    "binarization": binarization,
+    "pixelation": pixelation,
     # Reproduction
-    "photocopy":         photocopy,
-    "fax_lines":         fax_lines,
+    "photocopy": photocopy,
+    "fax_lines": fax_lines,
 }
 
 # Canonical application order: physical → biological → chemical → aged → scanning → reproduction
 _APPLY_ORDER: list[str] = [
     # Physical
-    "yellowing", "foxing", "crease", "water_stain", "edge_wear",
-    "fingerprint", "binding_shadow", "bleed_through", "hole_punch", "tape_residue",
-    "wrinkle", "wrinkle_v2", "pencil_marks", "ink_loss", "tear", "paper_fold",
+    "yellowing",
+    "foxing",
+    "crease",
+    "water_stain",
+    "edge_wear",
+    "fingerprint",
+    "binding_shadow",
+    "bleed_through",
+    "hole_punch",
+    "tape_residue",
+    "wrinkle",
+    "wrinkle_v2",
+    "pencil_marks",
+    "ink_loss",
+    "tear",
+    "paper_fold",
     # Biological
-    "mold", "mildew", "bio_foxing", "insect_damage",
+    "mold",
+    "mildew",
+    "bio_foxing",
+    "insect_damage",
     # Chemical
-    "ink_fading", "ink_bleed", "coffee_stain", "oil_stain", "acid_spots",
-    "bleaching", "toner_flaking",
+    "ink_fading",
+    "ink_bleed",
+    "coffee_stain",
+    "oil_stain",
+    "acid_spots",
+    "bleaching",
+    "toner_flaking",
     # Aged composite presets (applied after physical/chemical, before scanning artefacts)
-    "aged_sepia", "aged_yellowed", "aged_newspaper",
-    "aged_stained", "aged_crumpled", "aged_archive",
-    "aged_light", "aged_heavy", "aged_brittle",
+    "aged_sepia",
+    "aged_yellowed",
+    "aged_newspaper",
+    "aged_stained",
+    "aged_crumpled",
+    "aged_archive",
+    "aged_light",
+    "aged_heavy",
+    "aged_brittle",
     # Scanning
-    "noise", "salt_pepper", "vignette", "jpeg_artifacts", "skew",
-    "barrel_distortion", "moire", "halftone", "color_cast", "blur",
-    "dust", "overexpose", "underexpose", "motion_streak", "binarization",
+    "noise",
+    "salt_pepper",
+    "vignette",
+    "jpeg_artifacts",
+    "skew",
+    "barrel_distortion",
+    "moire",
+    "halftone",
+    "color_cast",
+    "blur",
+    "dust",
+    "overexpose",
+    "underexpose",
+    "motion_streak",
+    "binarization",
     "pixelation",
     # Reproduction
-    "photocopy", "fax_lines",
+    "photocopy",
+    "fax_lines",
 ]
 
 
@@ -1510,5 +1612,5 @@ def apply_effects(img_arr: np.ndarray, effects: dict[str, float]) -> np.ndarray:
             try:
                 result = EFFECTS[name](result, intensity)
             except Exception:
-                pass   # never let a single effect crash the pipeline
+                pass  # never let a single effect crash the pipeline
     return result
