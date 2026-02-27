@@ -3,11 +3,13 @@ import TuneIcon from '@mui/icons-material/Tune';
 import AutoFixHighIcon from '@mui/icons-material/AutoFixHigh';
 import FlagIcon from '@mui/icons-material/Flag';
 import SaveAltIcon from '@mui/icons-material/SaveAlt';
+import CloudIcon from '@mui/icons-material/Cloud';
 import { useEditorStore } from '../store';
 import PortsTab from './PortsTab';
 import AugmentTab from './AugmentTab';
 import ReportsTab from './ReportsTab';
 import ExportTab from './ExportTab';
+import CloudTab from './CloudTab';
 
 export default function RightPanel() {
   const { activeTab, setActiveTab, currentPath, previewAugment } = useEditorStore();
@@ -85,6 +87,12 @@ export default function RightPanel() {
               iconPosition="start"
               sx={{ '&.Mui-selected': { bgcolor: 'rgba(156,68,238,0.15)', color: '#cc88ff' } }}
             />
+            <Tab
+              label="Cloud"
+              icon={<CloudIcon sx={{ fontSize: 12 }} />}
+              iconPosition="start"
+              sx={{ '&.Mui-selected': { bgcolor: 'rgba(0,188,212,0.12)', color: '#00bcd4' } }}
+            />
           </Tabs>
         </Box>
       </Box>
@@ -94,6 +102,7 @@ export default function RightPanel() {
         {activeTab === 1 && <AugmentTab />}
         {activeTab === 2 && <ReportsTab />}
         {activeTab === 3 && <ExportTab />}
+        {activeTab === 4 && <CloudTab />}
       </Box>
     </Box>
   );

@@ -12,12 +12,15 @@ from pathlib import Path
 from . import augmentation as aug_module
 from . import reports as reports_module
 from . import symbols as symbols_module
+from src import gcs_sync as gcs_module
+from src.paths import Paths
 
 
 EDITOR_DIR: Path | None = None
 SERVER_PORT: int = 7421
 SERVER_HOST: str = "127.0.0.1"
 _batch_cancel = threading.Event()
+_gcs_cancel = threading.Event()
 
 
 def set_editor_dir(path: Path) -> None:
@@ -146,6 +149,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self._json(reports_module.load_reports())
             return
 
+        if p == "/api/gcs/status":
+            manager = gcs_module.get_sync_manager(Paths.REPO_ROOT)
+            self._json(manager.get_status())
+            return
+
         self._error("Not found", 404)
 
     def do_POST(self) -> None:
@@ -243,6 +251,26 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 self._error(err, 500)
             else:
                 self._json({"ok": True, "deleted": count})
+            return
+
+        if p == "/api/gcs/sync":
+            category_str = body.get("category", "")
+            delete_orphans = bool(body.get("delete_orphans", False))
+            try:
+                category = gcs_module.SyncCategory(category_str)
+            except ValueError:
+                self._error(f"Unknown category: {category_str!r}")
+                return
+            _gcs_cancel.clear()
+            manager = gcs_module.get_sync_manager(Paths.REPO_ROOT)
+            self._sse_stream(
+                manager.sync(category, delete_orphans=delete_orphans, cancel=_gcs_cancel)
+            )
+            return
+
+        if p == "/api/gcs/sync-cancel":
+            _gcs_cancel.set()
+            self._json({"ok": True})
             return
 
         self._error("Not found", 404)
